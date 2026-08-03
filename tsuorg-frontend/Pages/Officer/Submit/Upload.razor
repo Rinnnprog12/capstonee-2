@@ -1,0 +1,171 @@
+@page "/officer/submit/upload"
+@layout PortalLayout
+@inject NavigationManager Nav
+
+<PageTitle>New Submission · Upload</PageTitle>
+
+<style>
+  .upload-grid-fig7 {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 1.1rem !important;
+    width: 100% !important;
+    align-items: start;
+    box-sizing: border-box;
+  }
+  .upload-grid-fig7 > .ucard {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    min-width: 0;
+  }
+  .upload-grid-fig7 .ucard-title {
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: #f1f5f9;
+    line-height: 1.3;
+  }
+  .upload-grid-fig7 .ucard-zone {
+    position: relative;
+    min-height: 168px;
+    border-radius: 14px;
+    border: 1.5px dashed rgba(148, 163, 184, 0.42);
+    background: rgba(255, 255, 255, 0.02);
+    padding: 0.9rem 1rem;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
+  .upload-grid-fig7 .ucard-zone.empty {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  .upload-grid-fig7 .ucard-zone.uploading {
+    justify-content: flex-end;
+  }
+  .upload-grid-fig7 .ucard-zone.done {
+    border-style: solid;
+    border-color: #2dd4bf;
+    background: rgba(45, 212, 191, 0.12);
+    justify-content: space-between;
+    align-items: stretch;
+    padding-top: 1.35rem;
+    padding-bottom: 0.85rem;
+  }
+  .upload-grid-fig7 .ucard-zone input[type=file] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    z-index: 2;
+  }
+  .upload-grid-fig7 .ucard-file {
+    font-size: 0.82rem;
+    color: #cbd5e1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .upload-grid-fig7 .ucard-zone.done .ucard-file {
+    text-align: center;
+    font-size: 0.88rem;
+    margin-top: auto;
+    margin-bottom: auto;
+  }
+  .upload-grid-fig7 .ucard-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+    margin: 0.45rem 0 0.35rem;
+  }
+  .upload-grid-fig7 .ucard-bar > i {
+    display: block;
+    height: 100%;
+    width: 60%;
+    background: #2dd4bf;
+    border-radius: 999px;
+  }
+  .upload-grid-fig7 .ucard-pct {
+    font-size: 0.75rem;
+    color: #94a3b8;
+  }
+  .upload-grid-fig7 .ucard-badge {
+    color: #2dd4bf;
+    font-weight: 700;
+    font-size: 0.82rem;
+    text-align: center;
+    margin-top: auto;
+  }
+  .upload-grid-fig7 .ucard-placeholder {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    max-width: 11.5rem;
+    pointer-events: none;
+  }
+  @@media (max-width: 760px) {
+    .upload-grid-fig7 { grid-template-columns: 1fr !important; }
+  }
+</style>
+
+<div class="page-head">
+    <a class="back-btn" href="officer/submit">← Back</a>
+    <h1>New Document Submission</h1>
+</div>
+
+<SubmissionStepper Current="2" />
+
+<div class="wizard-card">
+    <h2>Upload Required Documents</h2>
+    <p class="hint">Please provide the documents listed in your checklist.</p>
+
+    <div class="upload-grid-fig7"
+         style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.1rem;width:100%;">
+
+        <div class="ucard">
+            <div class="ucard-title">Activity Proposal Form (PDF)</div>
+            <div class="ucard-zone uploading">
+                <InputFile OnChange="Ignore" accept=".pdf,image/*" />
+                <div>
+                    <div class="ucard-file">Activity_form.pdf</div>
+                    <div class="ucard-bar"><i></i></div>
+                    <div class="ucard-pct">60%</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ucard">
+            <div class="ucard-title">Adviser Signature Page</div>
+            <div class="ucard-zone done">
+                <InputFile OnChange="Ignore" accept=".pdf,image/*" />
+                <div class="ucard-file">Activity_form.pdf</div>
+                <div class="ucard-badge">Uploaded</div>
+            </div>
+        </div>
+
+        <div class="ucard">
+            <div class="ucard-title">Proof of Activity / Receipts</div>
+            <div class="ucard-zone empty">
+                <InputFile OnChange="Ignore" accept=".pdf,image/*" />
+                <p class="ucard-placeholder">Drop images/PDF files or click to browse.</p>
+            </div>
+        </div>
+    </div>
+
+    <p class="hint" style="margin-top:1rem;">2 of 3 documents provided.</p>
+
+    <div class="wizard-actions">
+        <button type="button" class="btn btn-primary" @onclick="Continue">Continue →</button>
+        <a class="btn btn-ghost" href="officer/submit">Cancel</a>
+    </div>
+</div>
+
+@code {
+    private void Continue() => Nav.NavigateTo("officer/submit/ocr");
+    private void Ignore(InputFileChangeEventArgs _) { }
+}

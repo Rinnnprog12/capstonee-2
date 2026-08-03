@@ -1,0 +1,58 @@
+@page "/officer/submit"
+@page "/officer/submit/type"
+@layout PortalLayout
+@inject NavigationManager Nav
+
+<PageTitle>New Submission · Select Type</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="officer">← Back</a>
+    <h1>New Document Submission</h1>
+</div>
+
+<SubmissionStepper Current="1" />
+
+<div class="wizard-card">
+    <h2>Select document type</h2>
+    <p class="hint">Choose the type of document you are submitting.</p>
+
+    <div class="field">
+        <label for="docName">Document name</label>
+        <input id="docName" class="input" @bind="DocName" placeholder="Input the name of the file…" />
+    </div>
+    <div class="field">
+        <label for="docType">Document type</label>
+        <select id="docType" class="select" @bind="DocType">
+            <option value="SF08">Activity Proposal (SF08)</option>
+            <option value="ACCOMPLISHMENT">Accomplishment Report</option>
+            <option value="ACCREDITATION">Accreditation Requirements</option>
+        </select>
+    </div>
+
+    <p style="margin:0.5rem 0 0.25rem;font-weight:600;font-size:0.9rem;">Required Checklist</p>
+    <ul class="checklist">
+        @foreach (var item in Checklist)
+        {
+            <li><span class="ok">✓</span> @item</li>
+        }
+    </ul>
+
+    <div class="wizard-actions">
+        <button type="button" class="btn btn-primary" @onclick="Continue">Continue →</button>
+        <a class="btn btn-ghost" href="officer">Cancel</a>
+    </div>
+</div>
+
+@code {
+    private string DocName = "Activity Proposal – Campus Clean Drive";
+    private string DocType = "SF08";
+
+    private IEnumerable<string> Checklist => DocType switch
+    {
+        "ACCOMPLISHMENT" => new[] { "Accomplished Form (PDF)", "Narrative report", "Photo documentation", "Expense receipts" },
+        "ACCREDITATION" => new[] { "Accreditation form", "Officer list", "Constitution & By-laws", "Financial statement" },
+        _ => new[] { "Accomplished Form (PDF)", "Adviser signature page", "Proof of activity / receipts" },
+    };
+
+    private void Continue() => Nav.NavigateTo("officer/submit/upload");
+}

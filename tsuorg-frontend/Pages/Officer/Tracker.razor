@@ -1,0 +1,55 @@
+@page "/officer/tracker"
+@layout PortalLayout
+
+<PageTitle>Document Tracker</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="officer">← Back</a>
+    <h1>Document Tracker</h1>
+</div>
+
+<div class="tabs">
+    <button type="button" class="tab @(Tab == "all" ? "active" : null)" @onclick='() => Tab = "all"'>All (3)</button>
+    <button type="button" class="tab @(Tab == "submitted" ? "active" : null)" @onclick='() => Tab = "submitted"'>submitted</button>
+    <button type="button" class="tab @(Tab == "ai" ? "active" : null)" @onclick='() => Tab = "ai"'>AI validated</button>
+    <button type="button" class="tab @(Tab == "adviser" ? "active" : null)" @onclick='() => Tab = "adviser"'>Adviser review</button>
+    <button type="button" class="tab @(Tab == "dean" ? "active" : null)" @onclick='() => Tab = "dean"'>Dean review</button>
+    <button type="button" class="tab @(Tab == "approved" ? "active" : null)" @onclick='() => Tab = "approved"'>Approved</button>
+    <span class="spacer">Sort: newest ▾</span>
+</div>
+
+@foreach (var d in Filtered)
+{
+    <a class="tracker-card" href="@($"officer/tracker/{d.Id}")">
+        <div class="doc-ico">📄</div>
+        <div style="min-width:0;flex:1;">
+            <div class="title">@d.Title</div>
+            <div class="meta">@d.Number · @d.Date</div>
+        </div>
+        <StatusBadge Status="@d.Status" />
+        <span class="score">@d.Score% compliance</span>
+    </a>
+}
+
+@code {
+    private string Tab = "all";
+
+    private readonly List<DocRow> Docs =
+    [
+        new("0041", "Activity Proposal – Campus Clean Drive", "DOC-2026-0041", "April 10, 2026", "Approved", 87),
+        new("0042", "Accomplishment Report – March", "DOC-2026-0042", "April 08, 2026", "Adviser review", 92),
+        new("0043", "Activity Proposal – SocNight Rehearsal", "DOC-2026-0043", "April 12, 2026", "Dean review", 85),
+    ];
+
+    private IEnumerable<DocRow> Filtered => Tab switch
+    {
+        "submitted" => Docs.Where(d => d.Status.Contains("Submitted", StringComparison.OrdinalIgnoreCase)),
+        "ai" => Docs,
+        "adviser" => Docs.Where(d => d.Status.Contains("Adviser", StringComparison.OrdinalIgnoreCase)),
+        "dean" => Docs.Where(d => d.Status.Contains("Dean", StringComparison.OrdinalIgnoreCase)),
+        "approved" => Docs.Where(d => d.Status.Contains("Approved", StringComparison.OrdinalIgnoreCase)),
+        _ => Docs,
+    };
+
+    private sealed record DocRow(string Id, string Title, string Number, string Date, string Status, int Score);
+}

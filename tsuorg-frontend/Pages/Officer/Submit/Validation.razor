@@ -1,0 +1,65 @@
+@page "/officer/submit/validation"
+@layout PortalLayout
+@inject NavigationManager Nav
+
+<PageTitle>New Submission · Validation</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="officer/submit/ocr">← Back</a>
+    <h1>New Document Submission</h1>
+</div>
+
+<SubmissionStepper Current="4" />
+
+<div class="wizard-card">
+    <h2>AI Validation &amp; Compliance</h2>
+    <p class="hint">CALSV Engine — running multi-point checks against university rules and standards.</p>
+
+    <div class="val-grid">
+        <div class="subcard scroll-panel">
+            <h4>Validation Report</h4>
+            <p style="font-weight:600;margin:0.4rem 0;">Accomplished Form (PDF)</p>
+            <div class="file-status"><span>Event Name</span><span class="tag-pass">PASSED</span></div>
+            <div class="file-status"><span>Event Type</span><span class="tag-pass">PASSED</span></div>
+            <div class="file-status"><span>Layout &amp; Formatting (85%)</span><span class="tag-pass">PASSED</span></div>
+            <div class="file-status"><span>Field Completeness</span><span class="tag-pass">PASSED</span></div>
+            <div class="file-status"><span>Formatting Consistency</span><span class="tag-flag">FLAG</span></div>
+
+            <p style="font-weight:600;margin:0.9rem 0 0.4rem;">Adviser Signature Page</p>
+            <div class="file-status"><span>Signature Detected</span><span class="tag-pass">PASSED</span></div>
+            <div class="file-status"><span>Adviser Name Match</span><span class="tag-pass">PASSED</span></div>
+
+            <p style="font-weight:600;margin:0.9rem 0 0.4rem;">Proof of Activity / Receipts</p>
+            <div class="file-status"><span>Completeness</span><span class="tag-pass">PASSED</span></div>
+        </div>
+
+        <div class="subcard">
+            <h4>Validation Insights (Flags)</h4>
+            <div class="flag-item">
+                <span class="flag-dot"></span>
+                <div>
+                    <strong>Low Confidence Field</strong>
+                    <div class="hint" style="margin:0.2rem 0 0;">Adviser name extracted — please verify spatial context.</div>
+                </div>
+            </div>
+            <div class="flag-item">
+                <span class="flag-dot"></span>
+                <div>
+                    <strong>Formatted Layout</strong>
+                    <div class="hint" style="margin:0.2rem 0 0;">Layout slightly deviates from standard form.</div>
+                </div>
+            </div>
+            <p class="hint" style="margin-top:0.85rem;">Flags are minor and for verification. Submit or revise.</p>
+        </div>
+    </div>
+
+    <p class="hint">Validation complete. All documents checked. Submissions with minor flags may proceed.</p>
+    <div class="wizard-actions">
+        <button type="button" class="btn btn-primary" @onclick="Continue">Continue →</button>
+        <a class="btn btn-ghost" href="officer/submit/ocr">Cancel</a>
+    </div>
+</div>
+
+@code {
+    private void Continue() => Nav.NavigateTo("officer/submit/confirm");
+}

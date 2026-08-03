@@ -1,0 +1,89 @@
+@page "/officer/tracker/{DocumentId}"
+@layout PortalLayout
+
+<PageTitle>Document Routing · @DocumentId</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="officer/tracker">← Back</a>
+    <h1>Document Tracker</h1>
+</div>
+
+<div class="id-banner">DOC-2026-@DocumentId · Accomplishment Report – March</div>
+
+<section class="milestones" aria-label="Routing milestones">
+    <div class="milestone done">
+        <div class="dot"></div>
+        <div class="label">Submitted</div>
+        <div class="sub">2026-04-08</div>
+    </div>
+    <div class="milestone done">
+        <div class="dot"></div>
+        <div class="label">AI validated</div>
+        <div class="sub">2026-04-08</div>
+    </div>
+    <div class="milestone current">
+        <div class="dot"></div>
+        <div class="label">Adviser Review</div>
+        <div class="sub">In progress</div>
+    </div>
+    <div class="milestone">
+        <div class="dot"></div>
+        <div class="label">Dean Review</div>
+        <div class="sub">Pending</div>
+    </div>
+    <div class="milestone">
+        <div class="dot"></div>
+        <div class="label">SOU approved</div>
+        <div class="sub">Pending</div>
+    </div>
+</section>
+
+<div class="grid-2">
+    <section class="panel">
+        <div class="panel-title"><h3>Document Details</h3></div>
+        <div class="kv">
+            <div><span class="k">Organization</span><span>Artist Circle</span></div>
+            <div><span class="k">Type</span><span>Accomplishment Report</span></div>
+            <div><span class="k">Subject</span><span>Accomplishment Report – March</span></div>
+            <div><span class="k">Submitted by</span><span>Harvey Barrozo</span></div>
+            <div><span class="k">Adviser</span><span>Dr. Juan Dela Cruz</span></div>
+            <div><span class="k">AI score</span><span class="badge badge-approved">95% complete</span></div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-title"><h3>Real-time audit trail</h3></div>
+        <div class="audit-item">
+            <div class="audit-dot blue"></div>
+            <div>
+                <div class="when">Today 16:02</div>
+                <div class="what">Routed to adviser. Sent to Dr. Juan Dela Cruz (CSS) for endorsement.</div>
+            </div>
+        </div>
+        <div class="audit-item">
+            <div class="audit-dot"></div>
+            <div>
+                <div class="when">Today 16:00</div>
+                <div class="what">AI validation passed. CALSV format compliant, signature detected. Score: 95%.</div>
+            </div>
+        </div>
+        <div class="audit-item">
+            <div class="audit-dot"></div>
+            <div>
+                <div class="when">Today 15:59</div>
+                <div class="what">OCR &amp; scanning. Tesseract processed text and layout detection.</div>
+            </div>
+        </div>
+        <div class="audit-item">
+            <div class="audit-dot"></div>
+            <div>
+                <div class="when">Today 15:57</div>
+                <div class="what">Document submitted. Uploaded by Harvey Barrozo (Multimedia Officer).</div>
+            </div>
+        </div>
+    </section>
+</div>
+
+@code {
+    [Parameter] public string DocumentId { get; set; } = "0041";
+}

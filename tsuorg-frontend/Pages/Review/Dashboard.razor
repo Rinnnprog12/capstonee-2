@@ -1,0 +1,81 @@
+@page "/review"
+@layout PortalLayout
+@inject DemoSession Session
+
+<PageTitle>Adviser / Dean Dashboard</PageTitle>
+
+<div class="welcome">
+    <h2>Hello, @Session.FullName!</h2>
+    <p>You have 3 documents pending your review. Your approvals help student organizations move forward.</p>
+</div>
+
+<section class="grid-4" aria-label="Review metrics">
+    <div class="stat-card">
+        <div class="stat-icon">⏳</div>
+        <div><div class="value">3</div><div class="label">Pending review</div></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">✓</div>
+        <div><div class="value">8</div><div class="label">Approved this month</div></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">↩</div>
+        <div><div class="value">2</div><div class="label">Returned</div></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">📁</div>
+        <div><div class="value">41</div><div class="label">Total reviewed</div></div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-title">
+        <h3>Pending review queue</h3>
+        <a class="btn btn-outline-teal btn-sm" href="review/queue">View all →</a>
+    </div>
+
+    <div class="list-row">
+        <div class="doc-ico warn">📄</div>
+        <div>
+            <div class="title">Activity Proposal – SocNight Rehearsal</div>
+            <div class="meta">DOC-2026-0041 · Apr 12, 2026 · Score 87%</div>
+        </div>
+        <div class="right"><a class="review-btn" href="review/queue">Review →</a></div>
+    </div>
+    <div class="list-row">
+        <div class="doc-ico purple">📄</div>
+        <div>
+            <div class="title">Accomplishment Report – March</div>
+            <div class="meta">DOC-2026-0042 · Apr 08, 2026 · Score 92%</div>
+        </div>
+        <div class="right"><span class="badge badge-flagged">Flagged</span></div>
+    </div>
+    <div class="list-row">
+        <div class="doc-ico info">📄</div>
+        <div>
+            <div class="title">Activity Proposal – Campus Clean Drive</div>
+            <div class="meta">DOC-2026-0040 · Apr 10, 2026 · Score 95%</div>
+        </div>
+        <div class="right"><a class="review-btn" href="review/queue">Review →</a></div>
+    </div>
+</section>
+
+<section class="panel" style="margin-top:1rem;">
+    <div class="panel-title"><h3>Recently reviewed</h3></div>
+    <div class="list-row">
+        <div class="doc-ico">📄</div>
+        <div>
+            <div class="title">Application Form – New Member Reg.</div>
+            <div class="meta">DOC-2026-0035 · Mar 15, 2026</div>
+        </div>
+        <div class="right"><StatusBadge Status="Approved" /></div>
+    </div>
+    <div class="list-row">
+        <div class="doc-ico danger">📄</div>
+        <div>
+            <div class="title">Application Form – New Member Reg.</div>
+            <div class="meta">DOC-2026-0031 · Mar 02, 2026</div>
+        </div>
+        <div class="right"><StatusBadge Status="returned" /></div>
+    </div>
+</section>

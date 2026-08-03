@@ -1,0 +1,162 @@
+@page "/officer/submit/ocr"
+@layout PortalLayout
+@inject NavigationManager Nav
+
+<PageTitle>New Submission · OCR</PageTitle>
+
+<style>
+  .ocr-page-grid {
+    display: grid !important;
+    grid-template-columns: 1.15fr 0.95fr !important;
+    gap: 1.25rem 1.5rem !important;
+    width: 100%;
+    align-items: start;
+  }
+  .ocr-files {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .ocr-file-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0.72rem 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    font-size: 0.9rem;
+  }
+  .ocr-file-row:first-child { padding-top: 0.15rem; }
+  .ocr-file-row:last-of-type { border-bottom: 0; }
+  .ocr-file-name {
+    color: #e2e8f0;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ocr-file-status {
+    color: #2dd4bf;
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .ocr-ready {
+    margin: 1.05rem 0 0 !important;
+    color: #94a3b8 !important;
+    font-size: 0.9rem !important;
+  }
+  .ocr-side {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    min-width: 0;
+  }
+  .ocr-panel {
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 14px;
+    padding: 0.95rem 1.05rem 1rem;
+  }
+  .ocr-panel h4 {
+    margin: 0 0 0.7rem;
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: #94a3b8;
+    letter-spacing: 0.01em;
+  }
+  .ocr-kv {
+    display: grid;
+    gap: 0.48rem;
+  }
+  .ocr-kv-row {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 38%) 1fr;
+    gap: 0.75rem;
+    align-items: baseline;
+    font-size: 0.86rem;
+  }
+  .ocr-kv-row .k {
+    color: #94a3b8;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+  }
+  .ocr-kv-row .v {
+    color: #f1f5f9;
+    font-weight: 500;
+    text-align: right;
+    justify-self: end;
+  }
+  .ocr-kv-row .v.teal { color: #2dd4bf; font-weight: 700; }
+  .ocr-kv-row .v.warn { color: #fbbf24; font-weight: 700; }
+  @@media (max-width: 900px) {
+    .ocr-page-grid { grid-template-columns: 1fr !important; }
+  }
+</style>
+
+<div class="page-head">
+    <a class="back-btn" href="officer/submit/upload">← Back</a>
+    <h1>New Document Submission</h1>
+</div>
+
+<SubmissionStepper Current="3" />
+
+<div class="wizard-card">
+    <h2>OCR Processing</h2>
+    <p class="hint">AI-Assisted Optical Character Recognition (OCR) — scanning and extracting raw text from your uploaded documents.</p>
+
+    <div class="ocr-page-grid"
+         style="display:grid;grid-template-columns:1.15fr 0.95fr;gap:1.25rem 1.5rem;width:100%;">
+
+        <div class="ocr-files">
+            <div class="ocr-file-row">
+                <span class="ocr-file-name">Activity_Proposal_Form.pdf</span>
+                <span class="ocr-file-status">Text Extracted · 95%</span>
+            </div>
+            <div class="ocr-file-row">
+                <span class="ocr-file-name">Adviser_Signature_Approved.pdf</span>
+                <span class="ocr-file-status">Signature Page Processed</span>
+            </div>
+            <div class="ocr-file-row">
+                <span class="ocr-file-name">Proof_of_Activity.pdf</span>
+                <span class="ocr-file-status">Receipts Extracted</span>
+            </div>
+
+            <p class="hint ocr-ready">OCR process complete. Ready for validation.</p>
+
+            <div class="wizard-actions">
+                <button type="button" class="btn btn-primary" @onclick="Continue">Continue →</button>
+                <a class="btn btn-ghost" href="officer/submit/upload">Cancel</a>
+            </div>
+        </div>
+
+        <div class="ocr-side">
+            <div class="ocr-panel">
+                <h4>OCR Text Preview (Raw Output)</h4>
+                <div class="ocr-kv">
+                    <div class="ocr-kv-row"><span class="k">Form</span><span class="v">Activity Proposal</span></div>
+                    <div class="ocr-kv-row"><span class="k">EVENT TYPE</span><span class="v">Activity</span></div>
+                    <div class="ocr-kv-row"><span class="k">ORG</span><span class="v">Artist Circle</span></div>
+                    <div class="ocr-kv-row"><span class="k">PRESIDENT</span><span class="v">Harvey Barrozo</span></div>
+                    <div class="ocr-kv-row"><span class="k">DATE</span><span class="v">06/13/2026</span></div>
+                    <div class="ocr-kv-row"><span class="k">ADVISER</span><span class="v">Daniel Guzman</span></div>
+                </div>
+            </div>
+
+            <div class="ocr-panel">
+                <h4>OCR Summary (Confidence Scores)</h4>
+                <div class="ocr-kv">
+                    <div class="ocr-kv-row"><span class="k">Text Extracted</span><span class="v teal">~94% average</span></div>
+                    <div class="ocr-kv-row"><span class="k">Key Fields</span><span class="v">Event, Org, Dates, Signatures</span></div>
+                    <div class="ocr-kv-row"><span class="k">Flagged</span><span class="v warn">2 Minor (low confidence)</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private void Continue() => Nav.NavigateTo("officer/submit/validation");
+}

@@ -1,0 +1,15 @@
+<div class="stepper" role="list" aria-label="Submission steps">
+    @for (var i = 0; i < Steps.Length; i++)
+    {
+        var n = i + 1;
+        var cls = n < Current ? "step done" : n == Current ? "step active" : "step";
+        <div class="@cls" role="listitem">@n. @Steps[i]</div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Current { get; set; } = 1;
+
+    private static readonly string[] Steps =
+        ["Select Type", "Upload", "OCR", "Validation", "Confirmation"];
+}

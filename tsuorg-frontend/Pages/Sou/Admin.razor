@@ -1,0 +1,36 @@
+@page "/sou"
+@layout PortalLayout
+
+<PageTitle>SOU Admin</PageTitle>
+
+<div class="welcome">
+    <h2>SOU Administration</h2>
+    <p>Global tracker, organization management, and final approvals for student organization documents.</p>
+</div>
+
+<section class="grid-3">
+    <div class="panel metric-big"><div class="label">Pending SOU review</div><div class="value">5</div></div>
+    <div class="panel metric-big"><div class="label">Archived this AY</div><div class="value">128</div></div>
+    <div class="panel metric-big"><div class="label">Active organizations</div><div class="value">42</div></div>
+</section>
+
+<section class="panel">
+    <div class="panel-title">
+        <h3>Quick links</h3>
+    </div>
+    <div class="list-row">
+        <div class="doc-ico">📋</div>
+        <div><div class="title">Review Queue</div><div class="meta">Final SOU endorsements</div></div>
+        <div class="right"><a class="btn btn-outline-teal btn-sm" href="review/queue">Open</a></div>
+    </div>
+    <div class="list-row">
+        <div class="doc-ico">📁</div>
+        <div><div class="title">Repository</div><div class="meta">Archived documents by type / AY</div></div>
+        <div class="right"><a class="btn btn-outline-teal btn-sm" href="officer/documents">Open</a></div>
+    </div>
+    <div class="list-row">
+        <div class="doc-ico">🔍</div>
+        <div><div class="title">Global Tracker</div><div class="meta">Cross-organization monitoring</div></div>
+        <div class="right"><a class="btn btn-outline-teal btn-sm" href="officer/tracker">Open</a></div>
+    </div>
+</section>

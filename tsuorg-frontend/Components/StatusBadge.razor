@@ -1,0 +1,18 @@
+<span class="badge @Css">@Label</span>
+
+@code {
+    [Parameter] public string Status { get; set; } = "submitted";
+
+    private string Label => Status.Replace('_', ' ');
+
+    private string Css => Status.ToLowerInvariant() switch
+    {
+        "under review" or "under_review" or "review" => "badge-review",
+        "approved" or "sou approved" => "badge-approved",
+        "returned" => "badge-returned",
+        "flagged" => "badge-flagged",
+        "adviser review" or "adviser" => "badge-adviser",
+        "dean review" or "dean" => "badge-dean",
+        _ => "badge-submitted",
+    };
+}

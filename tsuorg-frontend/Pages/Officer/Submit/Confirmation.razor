@@ -1,0 +1,93 @@
+@page "/officer/submit/confirm"
+@layout PortalLayout
+@inject NavigationManager Nav
+
+<PageTitle>New Submission · Confirmation</PageTitle>
+
+<style>
+  .meta-card {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0.85rem !important;
+    width: 100%;
+    margin: 1.1rem 0;
+    background: transparent;
+    border: 0;
+    overflow: visible;
+  }
+  .meta-cell {
+    padding: 1.05rem 1.15rem;
+    min-width: 0;
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 12px;
+  }
+  .meta-cell .k {
+    margin: 0 0 0.35rem;
+    color: #f1f5f9;
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+  .meta-cell .v {
+    margin: 0;
+    color: #cbd5e1;
+    font-weight: 400;
+    font-size: 0.9rem;
+    line-height: 1.35;
+  }
+  @@media (max-width: 760px) {
+    .meta-card { grid-template-columns: 1fr !important; }
+  }
+</style>
+
+<div class="page-head">
+    <a class="back-btn" href="officer/submit/validation">← Back</a>
+    <h1>New Document Submission</h1>
+</div>
+
+<SubmissionStepper Current="5" />
+
+<div class="wizard-card">
+    <h2>Submission Confirmation</h2>
+    <p style="margin:0;font-weight:600;">Final Review &amp; Confirmation</p>
+    <p class="hint">Metadata is locked. Audit trail (SHA-256) is generated. Your submission is uneditable.</p>
+
+    <div class="meta-card"
+         style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0.85rem;width:100%;">
+        <div class="meta-cell">
+            <div class="k">Document ID:</div>
+            <div class="v">DOC-2026-0541</div>
+        </div>
+        <div class="meta-cell">
+            <div class="k">Subject:</div>
+            <div class="v">Activity Proposal Form</div>
+        </div>
+        <div class="meta-cell">
+            <div class="k">Organization:</div>
+            <div class="v">Artist Circle</div>
+        </div>
+        <div class="meta-cell">
+            <div class="k">Validation Status:</div>
+            <div class="v">Complete with minor flags</div>
+        </div>
+        <div class="meta-cell">
+            <div class="k">Audit Log Created:</div>
+            <div class="v">Yes</div>
+        </div>
+        <div class="meta-cell">
+            <div class="k">Metadata State:</div>
+            <div class="v">Locked</div>
+        </div>
+    </div>
+
+    <p class="hint">Confirming your submission will send the document for official university review. No further edits can be made.</p>
+
+    <div class="wizard-actions">
+        <button type="button" class="btn btn-primary" @onclick="Confirm">Confirm Submission →</button>
+        <a class="btn btn-ghost" href="officer/submit/validation">Cancel</a>
+    </div>
+</div>
+
+@code {
+    private void Confirm() => Nav.NavigateTo("officer/tracker");
+}

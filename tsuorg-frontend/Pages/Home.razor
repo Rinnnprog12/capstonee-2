@@ -1,0 +1,23 @@
+@page "/"
+@inject NavigationManager Nav
+@inject DemoSession Session
+
+<p class="muted" style="padding:2rem;text-align:center;">Redirecting…</p>
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        var target = Session.IsSignedIn
+            ? Session.Role switch
+            {
+                "Adviser" or "Dean" => "/review",
+                "SouStaff" => "/sou",
+                _ => "/officer",
+            }
+            : "/login";
+
+        Nav.NavigateTo(target, replace: true);
+    }
+}

@@ -1,0 +1,75 @@
+@page "/login"
+@layout AuthLayout
+@inject DemoSession Session
+@inject NavigationManager Nav
+
+<PageTitle>Sign in · TSU-ORGDOCX</PageTitle>
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="tsu-seal" aria-hidden="true">
+            <img src="images/tsu-logo.png" alt="Tarlac State University" />
+        </div>
+        <h1>Sign in to TSU-ORGDOCX</h1>
+        <p class="sub">Select your role to preview the system</p>
+
+        <div class="role-row" role="radiogroup" aria-label="Role preview">
+            <button type="button" class="role-chip @(SelectedRole == "OrgOfficer" ? "active" : null)"
+                    @onclick='() => Select("OrgOfficer")'>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 7v4c0 4.5 3.2 8.4 8 9.5 4.8-1.1 8-5 8-9.5V7l-8-4Z"/><path d="M9 12h6"/></svg>
+                <span>Org Officer</span>
+            </button>
+            <button type="button" class="role-chip @(SelectedRole == "Adviser" ? "active" : null)"
+                    @onclick='() => Select("Adviser")'>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.8-3.8 4.2-5.5 7-5.5s5.2 1.7 7 5.5"/><path d="M16 5.5 19 4l.5 3"/></svg>
+                <span>Adviser</span>
+            </button>
+            <button type="button" class="role-chip @(SelectedRole == "SouStaff" ? "active" : null)"
+                    @onclick='() => Select("SouStaff")'>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 7v4c0 4.5 3.2 8.4 8 9.5 4.8-1.1 8-5 8-9.5V7l-8-4Z"/><path d="m9 12 2 2 4-4"/></svg>
+                <span>SOU Admin</span>
+            </button>
+        </div>
+
+        <div class="field">
+            <label for="email">Username</label>
+            <input id="email" type="email" @bind="Email" placeholder="org.officer@tsu.edu.ph" autocomplete="username" />
+        </div>
+        <div class="field">
+            <label for="password">Password</label>
+            <input id="password" type="password" @bind="Password" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+
+        <div class="auth-actions">
+            <button type="button" class="btn btn-ghost btn-block" @onclick="SignIn">Sign in →</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string SelectedRole = "OrgOfficer";
+    private string Email = "org.officer@tsu.edu.ph";
+    private string Password = "TsuOrg@2026";
+
+    private void Select(string role)
+    {
+        SelectedRole = role;
+        Email = role switch
+        {
+            "Adviser" => "adviser@tsu.edu.ph",
+            "SouStaff" => "sou@tsu.edu.ph",
+            _ => "org.officer@tsu.edu.ph",
+        };
+    }
+
+    private void SignIn()
+    {
+        Session.SignInAs(SelectedRole, Email);
+        Nav.NavigateTo(SelectedRole switch
+        {
+            "Adviser" => "/review",
+            "SouStaff" => "/sou",
+            _ => "/officer",
+        });
+    }
+}
