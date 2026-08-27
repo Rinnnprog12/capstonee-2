@@ -1,0 +1,66 @@
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.ipynb_checkpoints/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Datasets & trained weights (large — keep out of git)
+data/
+models/
+!data/.gitkeep
+!data/templates/
+!data/templates/**
+!data/raw/
+!data/raw/.gitkeep
+!data/raw/README.md
+!data/raw/images/
+!data/raw/images/.gitkeep
+!data/processed/
+!data/processed/.gitkeep
+!models/.gitkeep
+*.pt
+*.pth
+*.bin
+*.onnx
+*.safetensors
+*.h5
+*.ckpt
+*.pkl
+*.joblib
+
+# Label Studio / exports (local)
+label-studio-data/
+exports/
+*.zip
+
+# Tesseract local copies (install system-wide or document path)
+tessdata_best/
+tessdata/
+
+# Logs / OS
+*.log
+.DS_Store
+Thumbs.db

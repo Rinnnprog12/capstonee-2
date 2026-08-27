@@ -1,0 +1,13 @@
+base_model: microsoft/layoutlmv3-base
+epochs: 15
+batch_size: 4
+gradient_accumulation_steps: 4
+learning_rate: 3.0e-5
+weight_decay: 0.01
+max_seq_length: 512
+image_size: 224
+early_stopping_patience: 3
+train_split: 0.70
+val_split: 0.15
+test_split: 0.15
+output_dir: models/layoutlmv3-tsu-v1
