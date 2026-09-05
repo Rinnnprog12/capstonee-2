@@ -1,0 +1,94 @@
+@page "/login"
+@layout AuthLayout
+@attribute [AllowAnonymous]
+@inject ApiClient Api
+@inject AuthSession Session
+@inject JwtAuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Sign in · TSU-ORGDOCX</PageTitle>
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="tsu-seal" aria-hidden="true">
+            <img src="images/tsu-logo.png" alt="Tarlac State University" />
+        </div>
+        <h1>Sign in to TSU-ORGDOCX</h1>
+        <p class="sub">Org officers use <strong>@("@student.tsu.edu.ph")</strong>. Your portal opens based on your assigned role.</p>
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="auth-error" role="alert">@ErrorMessage</div>
+        }
+
+        <div class="field">
+            <label for="email">Email</label>
+            <input id="email" type="email" @bind="Email" placeholder="you@student.tsu.edu.ph" autocomplete="username" />
+        </div>
+        <div class="field">
+            <label for="password">Password</label>
+            <input id="password" type="password" @bind="Password" placeholder="••••••••" autocomplete="current-password"
+                   @onkeydown="OnKeyDown" />
+        </div>
+
+        <div class="auth-actions">
+            <button type="button" class="btn btn-ghost btn-block" disabled="@_busy" @onclick="SignInAsync">
+                @(_busy ? "Signing in…" : "Sign in →")
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string Email = string.Empty;
+    private string Password = string.Empty;
+    private string? ErrorMessage;
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        if (Session.IsSignedIn)
+            Nav.NavigateTo(Session.HomePath, replace: true);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await SignInAsync();
+    }
+
+    private async Task SignInAsync()
+    {
+        ErrorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Password))
+        {
+            ErrorMessage = "Email and password are required.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Api.LoginAsync(Email.Trim(), Password);
+            await AuthState.SignInAsync(result);
+            Nav.NavigateTo(AuthSession.HomePathForRole(result.Role));
+        }
+        catch (AuthException ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+        catch (HttpRequestException)
+        {
+            ErrorMessage = "Cannot reach the API. Make sure the backend is running.";
+        }
+        catch (Exception)
+        {
+            ErrorMessage = "Sign in failed. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

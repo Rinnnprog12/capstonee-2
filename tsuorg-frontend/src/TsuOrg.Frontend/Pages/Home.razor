@@ -1,0 +1,21 @@
+@page "/"
+@attribute [AllowAnonymous]
+@inject NavigationManager Nav
+@inject AuthSession Session
+@inject AuthenticationStateProvider AuthStateProvider
+
+<p class="muted" style="padding:2rem;text-align:center;">Redirecting…</p>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated == true && Session.IsSignedIn)
+        {
+            Nav.NavigateTo(Session.HomePath, replace: true);
+            return;
+        }
+
+        Nav.NavigateTo("/login", replace: true);
+    }
+}

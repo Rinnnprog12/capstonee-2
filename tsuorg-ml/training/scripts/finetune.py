@@ -82,8 +82,10 @@ class TsuOrgDataset(Dataset):
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         rec = self.records[idx]
 
+        # Do NOT manually resize before the processor. Boxes are already in
+        # LayoutLMv3 0–1000 space; AutoProcessor/LayoutLMv3Processor resizes the
+        # image to the model size while keeping bbox alignment.
         image = PILImage.open(rec["image_path"]).convert("RGB")
-        image = image.resize((self.image_size, self.image_size))
 
         words      = rec["words"]
         boxes      = rec["boxes"]
@@ -114,12 +116,23 @@ class TsuOrgLayoutLMv3(nn.Module):
     head on top of the [CLS] token representation.
     """
 
-    def __init__(self, base_model_name: str, num_token_labels: int, num_doc_classes: int) -> None:
+    def __init__(
+        self,
+        base_model_name: str,
+        num_token_labels: int,
+        num_doc_classes: int,
+        id2label: dict[int, str] | None = None,
+    ) -> None:
         super().__init__()
+        kwargs: dict[str, Any] = {
+            "num_labels": num_token_labels,
+            "ignore_mismatched_sizes": True,
+        }
+        if id2label:
+            kwargs["id2label"] = {int(k): v for k, v in id2label.items()}
+            kwargs["label2id"] = {v: int(k) for k, v in id2label.items()}
         self.token_model = LayoutLMv3ForTokenClassification.from_pretrained(
-            base_model_name,
-            num_labels=num_token_labels,
-            ignore_mismatched_sizes=True,
+            base_model_name, **kwargs
         )
         hidden = self.token_model.config.hidden_size
         self.seq_head = nn.Sequential(
@@ -236,10 +249,13 @@ def train(cfg: dict[str, Any], data_dir: Path) -> None:
     val_ds   = TsuOrgDataset(data_dir / "val.jsonl",   processor,
                               token_label2id, cfg["max_seq_length"], cfg["image_size"])
 
-    train_loader = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True,  num_workers=2)
-    val_loader   = DataLoader(val_ds,   batch_size=cfg["batch_size"], shuffle=False, num_workers=2)
+    num_workers  = int(cfg.get("num_workers", 0))
+    train_loader = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True,  num_workers=num_workers)
+    val_loader   = DataLoader(val_ds,   batch_size=cfg["batch_size"], shuffle=False, num_workers=num_workers)
 
-    model = TsuOrgLayoutLMv3(cfg["base_model"], num_token_labels, num_doc_classes).to(device)
+    model = TsuOrgLayoutLMv3(
+        cfg["base_model"], num_token_labels, num_doc_classes, id2label=id2label
+    ).to(device)
 
     total_steps   = math.ceil(len(train_loader) / cfg["gradient_accumulation_steps"]) * cfg["epochs"]
     warmup_steps  = int(0.10 * total_steps)
@@ -254,7 +270,11 @@ def train(cfg: dict[str, Any], data_dir: Path) -> None:
     out_dir = Path(cfg["output_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    best_metric   = -1.0
+    # Checkpoint selection uses the real objective (token macro-F1).
+    # Early stopping tracks val_loss, the most reliable signal while the
+    # sequence head is trivial (single doc class during the SF08-only phase).
+    best_f1       = -1.0
+    best_val_loss = float("inf")
     patience_left = cfg["early_stopping_patience"]
     history: list[dict] = []
 
@@ -323,39 +343,48 @@ def train(cfg: dict[str, Any], data_dir: Path) -> None:
             id2label, doc_classes)
 
         avg_val_loss = val_loss / len(val_loader)
-        combined     = 0.7 * metrics["token_macro_f1"] + 0.3 * metrics["seq_accuracy"]
+        token_f1     = metrics["token_macro_f1"]
 
         print(f"\nEpoch {epoch:02d}: "
               f"train_loss={avg_train_loss:.4f}  val_loss={avg_val_loss:.4f}  "
-              f"token_F1={metrics['token_macro_f1']:.4f}  "
-              f"seq_acc={metrics['seq_accuracy']:.4f}  "
-              f"combined={combined:.4f}")
+              f"token_F1={token_f1:.4f}  "
+              f"seq_acc={metrics['seq_accuracy']:.4f}")
 
         history.append({
             "epoch": epoch,
             "train_loss": avg_train_loss,
             "val_loss": avg_val_loss,
             **metrics,
-            "combined": combined,
         })
 
-        if combined > best_metric:
-            best_metric   = combined
-            patience_left = cfg["early_stopping_patience"]
+        # Save the checkpoint that maximises the real objective (token macro-F1).
+        if token_f1 > best_f1 + 1e-4:
+            best_f1   = token_f1
             best_ckpt = out_dir / "best"
             best_ckpt.mkdir(exist_ok=True)
-            # Save token classification model weights
             model.token_model.save_pretrained(str(best_ckpt))
             processor.save_pretrained(str(best_ckpt))
-            # Save the seq head separately
             torch.save(model.seq_head.state_dict(), best_ckpt / "seq_head.pt")
-            print(f"  ✓ Saved best model (combined={combined:.4f})")
+            print(f"  ✓ Saved best model (token_F1={token_f1:.4f})")
+
+        # Early stopping keyed on val_loss (steadier signal on small data).
+        if avg_val_loss < best_val_loss - 1e-4:
+            best_val_loss = avg_val_loss
+            patience_left = cfg["early_stopping_patience"]
         else:
             patience_left -= 1
-            print(f"  No improvement. Patience: {patience_left}/{cfg['early_stopping_patience']}")
-            if patience_left == 0:
+            print(f"  val_loss no improvement. Patience: {patience_left}/{cfg['early_stopping_patience']}")
+            if patience_left <= 0:
                 print("  Early stopping triggered.")
                 break
+
+    # Guarantee a checkpoint exists even if token-F1 never improved.
+    best_ckpt = out_dir / "best"
+    if not best_ckpt.exists():
+        best_ckpt.mkdir(parents=True, exist_ok=True)
+        model.token_model.save_pretrained(str(best_ckpt))
+        processor.save_pretrained(str(best_ckpt))
+        torch.save(model.seq_head.state_dict(), best_ckpt / "seq_head.pt")
 
     # Save training history
     (out_dir / "history.json").write_text(
@@ -365,7 +394,7 @@ def train(cfg: dict[str, Any], data_dir: Path) -> None:
     (out_dir / "train_config.yaml").write_text(
         yaml.dump(cfg), encoding="utf-8")
 
-    print(f"\nTraining complete. Best combined metric: {best_metric:.4f}")
+    print(f"\nTraining complete. Best token macro-F1: {best_f1:.4f} | best val_loss: {best_val_loss:.4f}")
     print(f"Model saved to: {out_dir / 'best'}")
 
 

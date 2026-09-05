@@ -1,0 +1,499 @@
+@page "/review/decide/{DocumentId:guid}"
+@page "/sou/monitor/{DocumentId:guid}"
+@layout PortalLayout
+@attribute [Authorize(Roles = "Adviser,Dean,SouStaff,SystemAdmin")]
+@inject ApiClient Api
+@inject AuthSession Session
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+
+<PageTitle>Review @(_doc?.DocumentNumber ?? "Document")</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="@BackHref">← Back</a>
+    <h1>Review&nbsp;&nbsp;@(_doc?.DocumentNumber ?? "…")</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))   { <p class="form-error" role="alert">@_error</p> }
+@if (!string.IsNullOrEmpty(_success)) { <p class="hint" style="color:#2dd4bf;font-weight:600;">@_success</p> }
+
+@if (_loading)
+{
+    <p class="hint">Loading document…</p>
+}
+else if (_doc is null)
+{
+    <p class="hint">Document not found.</p>
+}
+else
+{
+    <section class="panel review-eval">
+        <div class="review-eval-head">
+            <div class="review-avatar" aria-hidden="true">@OrgInitials</div>
+            <div class="review-eval-titles">
+                <div class="title">@DisplayTitle</div>
+                <div class="meta">@_doc.OrganizationName</div>
+                <div style="margin-top:0.35rem;">
+                    <StatusBadge Status="@StatusLabel" />
+                    <span class="hint" style="margin-left:0.5rem;">Stage: @_doc.CurrentStage</span>
+                </div>
+            </div>
+            <div class="review-eval-ref">
+                <div>@_doc.DocumentNumber</div>
+                <small>Submitted @SubmittedLabel</small>
+            </div>
+        </div>
+
+        <h5 class="review-section-label">OCR-Extracted Content</h5>
+        <div class="ocr-box">
+            @if (!string.IsNullOrWhiteSpace(_validation?.OcrCaption))
+            {
+                <p class="ocr-caption">@_validation.OcrCaption</p>
+            }
+            @if (ExtractedRows.Count == 0 && string.IsNullOrWhiteSpace(_validation?.OcrCaption))
+            {
+                <div class="val-muted">No OCR/CALSV extract yet. Caption appears after the officer upload is validated.</div>
+            }
+            else
+            {
+                @foreach (var row in ExtractedRows)
+                {
+                    <div class="ocr-caption-line"><span>@row.Label:</span> @row.Value</div>
+                }
+            }
+            @if (!string.IsNullOrWhiteSpace(_validation?.OcrScannedCaption))
+            {
+                <p class="ocr-scanned">@_validation.OcrScannedCaption</p>
+            }
+        </div>
+
+        <div class="compliance-head">
+            <span>Compliance score</span>
+            <strong class="@(ComplianceTone)">@(CompliancePercent is int cp ? $"{cp}%" : "—")</strong>
+            <span class="val-muted">· @ComplianceVerdict</span>
+        </div>
+        <ul class="compliance-checklist">
+            @foreach (var check in Checklist)
+            {
+                <li class="@(check.Passed ? "pass" : "flag")">
+                    <span class="check-ico" aria-hidden="true">@(check.Passed ? "✓" : "!")</span>
+                    @check.Label
+                </li>
+            }
+        </ul>
+
+        <h5 class="review-section-label">Document Integrity</h5>
+        <div class="integrity-box">
+            @if (!string.IsNullOrWhiteSpace(_doc.MetadataLockHash))
+            {
+                <code>SHA-256: @_doc.MetadataLockHash</code>
+                <span>
+                    Generated: @(_doc.MetadataLockedAt?.ToLocalTime().ToString("MMM d, yyyy") ?? "—")
+                    · Status: @StatusLabel
+                    · Version: @VersionLabel
+                    · Locked: @(_doc.IsMetadataLocked ? "Yes" : "No")
+                </span>
+            }
+            else
+            {
+                <span class="val-muted">
+                    Status: @StatusLabel · Version: @VersionLabel · Locked: No
+                    — metadata hash not generated yet.
+                </span>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(_doc.PrimaryFileName) || _doc.Attachments.Count > 0)
+        {
+            <h5 class="review-section-label">Uploaded Files</h5>
+            @if (!string.IsNullOrEmpty(_doc.PrimaryFileName))
+            {
+                <div class="file-status">
+                    <span>Primary — @_doc.PrimaryFileName</span>
+                    <span style="display:inline-flex;align-items:center;gap:0.6rem;">
+                        <button type="button" class="btn btn-outline-teal btn-sm" disabled="@_openingFile" @onclick="ViewPrimaryFileAsync">
+                            @(_openingFile ? "Opening…" : "View file")
+                        </button>
+                        <span class="tag-pass">Uploaded</span>
+                    </span>
+                </div>
+            }
+            @foreach (var att in _doc.Attachments)
+            {
+                <div class="file-status">
+                    <span>@att.AttachmentType — @att.FileName</span>
+                    <span style="display:inline-flex;align-items:center;gap:0.6rem;">
+                        <button type="button"
+                                class="btn btn-outline-teal btn-sm"
+                                disabled="@(_openingAttachmentId == att.Id)"
+                                @onclick="() => ViewAttachmentAsync(att.Id)">
+                            @(_openingAttachmentId == att.Id ? "Opening…" : "View file")
+                        </button>
+                        <span class="tag-pass">Uploaded</span>
+                    </span>
+                </div>
+            }
+        }
+
+        <h5 class="review-section-label">Reviewer comment (required for return/reject)</h5>
+        <textarea class="input review-comment"
+                  rows="4"
+                  @bind="_comments"
+                  disabled="@(!_canDecide)"
+                  placeholder="Add comment, revision instructions, or approval notes..."></textarea>
+
+        @if (_pendingAction == "approve")
+        {
+            <div class="field" style="margin-top:0.85rem;">
+                <label>Electronic Signature (required to approve)</label>
+                <InputFile OnChange="OnSigSelected" accept=".png,.jpg,.jpeg,image/png,image/jpeg" />
+                @if (_sigFileName is not null)
+                {
+                    <p class="hint" style="margin-top:0.3rem;">@_sigFileName selected</p>
+                }
+            </div>
+        }
+
+        @if (_canDecide)
+        {
+            <div class="decide-actions-row">
+                <button type="button"
+                        class="btn btn-primary"
+                        disabled="@(_busy || (_pendingAction is not null && _pendingAction != "approve"))"
+                        @onclick='() => SetAction("approve")'>
+                    Approve
+                </button>
+                <button type="button"
+                        class="btn btn-warn"
+                        disabled="@(_busy || (_pendingAction is not null && _pendingAction != "return"))"
+                        @onclick='() => SetAction("return")'>
+                    Return for revision
+                </button>
+                <button type="button"
+                        class="btn btn-danger"
+                        disabled="@(_busy || (_pendingAction is not null && _pendingAction != "reject"))"
+                        @onclick='() => SetAction("reject")'>
+                    Reject
+                </button>
+            </div>
+        }
+        else if (!_loading)
+        {
+            <p class="hint" style="margin-top:1rem;">
+                This document is no longer awaiting your decision
+                (@StatusLabel · @_doc.CurrentStage). The student officer can see this status in Document Tracker.
+            </p>
+        }
+
+        @if (_pendingAction is not null && !_busy)
+        {
+            <div class="decide-confirm" style="margin-top:1rem;">
+                <p>Confirm <strong>@_pendingAction.ToUpperInvariant()</strong>? This updates the database status for the officer.</p>
+                <div style="display:flex;gap:0.75rem;margin-top:0.5rem;">
+                    <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="ConfirmDecisionAsync">Yes, confirm</button>
+                    <button type="button" class="btn btn-ghost" @onclick="CancelAction">Cancel</button>
+                </div>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public Guid DocumentId { get; set; }
+    [SupplyParameterFromQuery(Name = "from")] public string? From { get; set; }
+
+    private DocumentDetailDto? _doc;
+    private ValidationDetailDto? _validation;
+    private WorkflowHistoryDto? _history;
+    private IReadOnlyList<DocumentVersionDto> _versions = [];
+    private bool _loading = true;
+    private bool _busy;
+    private bool _openingFile;
+    private Guid? _openingAttachmentId;
+    private string? _error;
+    private string? _success;
+    private string _comments = "";
+    private string? _pendingAction;
+    private byte[]? _sigBytes;
+    private string? _sigFileName;
+
+    private string BackHref
+    {
+        get
+        {
+            var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/').ToLowerInvariant();
+            if (path.StartsWith("/sou/monitor"))
+                return "sou/monitor";
+
+            return From?.ToLowerInvariant() switch
+            {
+                "monitor" => "sou/monitor",
+                "queue" => "review/queue",
+                "tracker-detail" => Session.IsInRole("SouStaff", "SystemAdmin")
+                    ? $"sou/tracker/{DocumentId}"
+                    : $"officer/tracker/{DocumentId}",
+                "tracker" => Session.IsInRole("SouStaff", "SystemAdmin") ? "sou/tracker" : "officer/tracker",
+                "history" => "review/history",
+                _ => Session.IsInRole("SouStaff", "SystemAdmin") ? "sou/monitor"
+                    : Session.IsInRole("Adviser", "Dean") ? "review/queue"
+                    : "officer/tracker",
+            };
+        }
+    }
+
+    private bool _canDecide =>
+        _doc is not null
+        && string.Equals(_doc.Status, "UnderReview", StringComparison.OrdinalIgnoreCase)
+        && RoleMatchesStage(_doc.CurrentStage);
+
+    private bool RoleMatchesStage(string stage) => Session.Role switch
+    {
+        "Adviser" => string.Equals(stage, "Adviser", StringComparison.OrdinalIgnoreCase),
+        "Dean" => string.Equals(stage, "Dean", StringComparison.OrdinalIgnoreCase),
+        "SouStaff" => string.Equals(stage, "Sou", StringComparison.OrdinalIgnoreCase),
+        "SystemAdmin" => stage is "Adviser" or "Dean" or "Sou",
+        _ => false,
+    };
+
+    private string SubmittedLabel =>
+        (_doc?.MetadataLockedAt ?? _doc?.CreatedAt)?.ToLocalTime().ToString("MMM d, yyyy") ?? "—";
+
+    private string DisplayTitle =>
+        string.IsNullOrWhiteSpace(_doc?.Title)
+            ? (_doc?.DocumentTypeName ?? "Untitled submission")
+            : _doc!.Title;
+
+    private string OrgInitials
+    {
+        get
+        {
+            var name = _doc?.OrganizationName ?? "";
+            var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length switch
+            {
+                0 => "?",
+                1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+                _ => $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}",
+            };
+        }
+    }
+
+    private int? CompliancePercent =>
+        _validation is null ? null : (_validation.ScorePercent > 0
+            ? _validation.ScorePercent
+            : (int)Math.Round(_validation.Confidence > 1m ? _validation.Confidence : _validation.Confidence * 100));
+
+    private string ComplianceTone => CompliancePercent switch
+    {
+        >= 80 => "teal",
+        >= 60 => "warn-text",
+        null => "val-muted",
+        _ => "danger-text",
+    };
+
+    private string ComplianceVerdict =>
+        !string.IsNullOrWhiteSpace(_validation?.Verdict)
+            ? _validation!.Verdict
+            : _validation switch
+            {
+                null => "Awaiting AI validation",
+                { RequiresHumanReview: true } => "Flagged for human review",
+                _ when CompliancePercent is < 60 => "Needs revision before review",
+                _ => "Approved for review",
+            };
+
+    private IReadOnlyList<ExtractedFieldDto> ExtractedRows =>
+        _validation?.ExtractedContent is { Count: > 0 } rows
+            ? rows
+            : [];
+
+    private IReadOnlyList<ComplianceCheckDto> Checklist =>
+        _validation?.Checks is { Count: > 0 } checks
+            ? checks
+            : _validation is null
+                ? [new("AI validation pending — no automated checks yet", false)]
+                : [];
+
+    private string StatusLabel => (_doc?.Status, _doc?.CurrentStage) switch
+    {
+        ("UnderReview", "Adviser") => "Adviser review",
+        ("UnderReview", "Dean") => "Dean review",
+        ("UnderReview", "Sou") => "SOU review",
+        ("Returned", _) => "Returned for revision",
+        ("Approved", _) => "Approved",
+        ("Rejected", _) => "Rejected",
+        ("Archived", _) => "Archived",
+        (var status, _) when !string.IsNullOrWhiteSpace(status) => status,
+        _ => "—",
+    };
+
+    private string VersionLabel
+    {
+        get
+        {
+            if (_versions.Count > 0)
+                return $"{_versions.Max(v => v.VersionNumber)}.0";
+            return "1.0";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _doc = await Api.GetDocumentAsync(DocumentId);
+            if (_doc is not null)
+            {
+                try { _validation = await Api.GetValidationAsync(DocumentId); }
+                catch { /* graceful degrade */ }
+                try { _history = await Api.GetWorkflowHistoryAsync(DocumentId); }
+                catch { /* optional */ }
+                try { _versions = await Api.GetDocumentVersionsAsync(DocumentId); }
+                catch { _versions = []; }
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ViewPrimaryFileAsync()
+    {
+        _openingFile = true;
+        _error = null;
+        try
+        {
+            var download = await Api.GetDocumentDownloadAsync(DocumentId);
+            if (download is null || string.IsNullOrWhiteSpace(download.SasUrl))
+            {
+                _error = "The uploaded file is not available for viewing.";
+                return;
+            }
+            await Js.InvokeVoidAsync("open", download.SasUrl, "_blank");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _openingFile = false;
+        }
+    }
+
+    private async Task ViewAttachmentAsync(Guid attachmentId)
+    {
+        _openingAttachmentId = attachmentId;
+        _error = null;
+        try
+        {
+            var download = await Api.GetAttachmentDownloadAsync(DocumentId, attachmentId);
+            if (download is null || string.IsNullOrWhiteSpace(download.SasUrl))
+            {
+                _error = "The attachment is not available for viewing.";
+                return;
+            }
+            await Js.InvokeVoidAsync("open", download.SasUrl, "_blank");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _openingAttachmentId = null;
+        }
+    }
+
+    private void SetAction(string action)
+    {
+        _pendingAction = action;
+        _error = null;
+        _success = null;
+    }
+
+    private void CancelAction() => _pendingAction = null;
+
+    private async Task OnSigSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > 5_000_000) { _error = "Signature file must be under 5 MB."; return; }
+        await using var stream = file.OpenReadStream(5_000_000);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _sigBytes = ms.ToArray();
+        _sigFileName = file.Name;
+    }
+
+    private async Task ConfirmDecisionAsync()
+    {
+        if (_pendingAction is null) return;
+
+        if ((_pendingAction is "return" or "reject") && string.IsNullOrWhiteSpace(_comments))
+        {
+            _error = "A reviewer comment is required when returning or rejecting.";
+            return;
+        }
+
+        if (_pendingAction == "approve" && _sigBytes is null)
+        {
+            _error = "Electronic signature is required to approve.";
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _success = null;
+
+        try
+        {
+            WorkflowDecisionResult result = _pendingAction switch
+            {
+                "approve" => await ApproveWithSignatureAsync(),
+                "reject" => await Api.RejectAsync(DocumentId, _comments),
+                _ => await Api.ReturnAsync(DocumentId, _comments),
+            };
+
+            _success = $"{result.Message} Officer Document Tracker now shows “{FriendlyStatus(result.NewStatus, result.NewStage)}”.";
+            _pendingAction = null;
+            _comments = "";
+            _sigBytes = null;
+            _sigFileName = null;
+
+            _doc = await Api.GetDocumentAsync(DocumentId);
+            try { _history = await Api.GetWorkflowHistoryAsync(DocumentId); } catch { /* optional */ }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task<WorkflowDecisionResult> ApproveWithSignatureAsync()
+    {
+        using var ms = new MemoryStream(_sigBytes!);
+        return await Api.ApproveAsync(DocumentId, _comments, ms, _sigFileName ?? "signature.png");
+    }
+
+    private static string FriendlyStatus(string status, string stage) => (status, stage) switch
+    {
+        ("UnderReview", "Dean") => "Dean review",
+        ("UnderReview", "Sou") => "SOU review",
+        ("UnderReview", "Adviser") => "Adviser review",
+        ("Returned", _) => "Returned for revision",
+        ("Rejected", _) => "Rejected",
+        ("Approved", _) => "Approved",
+        ("Archived", _) => "Archived",
+        _ => status,
+    };
+}

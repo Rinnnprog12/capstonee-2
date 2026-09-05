@@ -1,0 +1,149 @@
+@page "/sou/monitor"
+@layout PortalLayout
+@attribute [Authorize(Roles = "SouStaff,SystemAdmin")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Workflow Monitor</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="sou">← Back</a>
+    <h1>Workflow monitor</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+<div class="tabs">
+    <button type="button" class="tab @(_tab == "AllActive" ? "active" : null)" @onclick='() => SwitchTabAsync("AllActive")'>
+        All active (@_allCount)
+    </button>
+    <button type="button" class="tab @(_tab == "Flagged" ? "active" : null)" @onclick='() => SwitchTabAsync("Flagged")'>
+        Flagged (@_flaggedCount)
+    </button>
+    <button type="button" class="tab @(_tab == "Stale" ? "active" : null)" @onclick='() => SwitchTabAsync("Stale")'>
+        Stale &gt; 5 days (@_staleCount)
+    </button>
+</div>
+
+@if (_loading)
+{
+    <p class="hint">Loading monitor…</p>
+}
+else if (_items.Count == 0)
+{
+    <section class="panel">
+        <p class="empty-state">No active documents in this view.</p>
+    </section>
+}
+else
+{
+    <div class="recent-list" role="list">
+        @foreach (var item in _items)
+        {
+            <button type="button"
+                    class="list-row list-row-btn"
+                    role="listitem"
+                    @onclick="() => Open(item)">
+                <div class="doc-ico @IconTone(item.State)">📄</div>
+                <div>
+                    <div class="title">
+                        @item.DocumentNumber · @item.SubmittedAt.ToLocalTime().ToString("MMM d, yyyy") · @item.OrganizationName
+                    </div>
+                    <div class="meta">@RowMeta(item)</div>
+                </div>
+                <div class="right">
+                    <span class="badge @StateBadge(item.State)">@StateLabel(item.State)</span>
+                </div>
+            </button>
+        }
+    </div>
+}
+
+@code {
+    private string _tab = "AllActive";
+    private bool _loading = true;
+    private string? _error;
+    private int _allCount;
+    private int _flaggedCount;
+    private int _staleCount;
+    private readonly List<WorkflowMonitorItemDto> _items = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task SwitchTabAsync(string tab)
+    {
+        if (_tab == tab && !_loading) return;
+        _tab = tab;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var result = await Api.GetWorkflowMonitorAsync(_tab);
+            _items.Clear();
+            _items.AddRange(result.Items);
+            _allCount = result.AllActiveCount;
+            _flaggedCount = result.FlaggedCount;
+            _staleCount = result.StaleCount;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void Open(WorkflowMonitorItemDto item) =>
+        Nav.NavigateTo($"/sou/monitor/{item.DocumentId}");
+
+    private static string RowMeta(WorkflowMonitorItemDto item)
+    {
+        var parts = new List<string> { $"Stage: {item.StageLabel}" };
+        if (!string.IsNullOrWhiteSpace(item.AssignedTo))
+            parts.Add(item.State == "Stale" || item.StageLabel == "Returned"
+                ? item.AssignedTo
+                : $"Assigned: {item.AssignedTo}");
+        if (item.Score is int s)
+            parts.Add($"Score {s}%{(item.State == "Clean" ? " Clean" : "")}");
+        if (item.FlagCount > 0)
+            parts.Add($"{item.FlagCount} flag{(item.FlagCount == 1 ? "" : "s")}");
+        if (item.State == "Stale")
+            parts.Add($"{item.DaysElapsed} days elapsed");
+        return string.Join(" · ", parts);
+    }
+
+    private static string StateLabel(string state) => state switch
+    {
+        "AllActive" or "InReview" => "In review",
+        "Flagged" => "Flagged",
+        "Clean" => "Clean",
+        "Stale" => "Stale",
+        _ => state,
+    };
+
+    private static string StateBadge(string state) => state switch
+    {
+        "Flagged" => "badge-flagged",
+        "Clean" => "badge-approved",
+        "Stale" => "badge-returned",
+        _ => "badge-review",
+    };
+
+    private static string IconTone(string state) => state switch
+    {
+        "Flagged" => "purple",
+        "Stale" => "danger",
+        "Clean" => "",
+        _ => "warn",
+    };
+}

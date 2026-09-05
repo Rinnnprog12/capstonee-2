@@ -1,0 +1,40 @@
+@using Microsoft.AspNetCore.Components.Authorization
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.PortalLayout)">
+                <NotAuthorized>
+                    @if (context.User.Identity?.IsAuthenticated != true)
+                    {
+                        <RedirectToLogin />
+                    }
+                    else
+                    {
+                        <LayoutView Layout="@typeof(Layout.AuthLayout)">
+                            <div class="auth-page">
+                                <div class="auth-card">
+                                    <h1>Access denied</h1>
+                                    <p class="sub">Your account role cannot open this page.</p>
+                                    <a class="btn btn-primary" href="/">Go to your portal</a>
+                                </div>
+                            </div>
+                        </LayoutView>
+                    }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <LayoutView Layout="@typeof(Layout.AuthLayout)">
+                <div class="auth-page">
+                    <div class="auth-card">
+                        <h1>Page not found</h1>
+                        <p class="sub">That route does not exist in TSU-ORGDOCX.</p>
+                        <a class="btn btn-primary" href="/">Back to portal</a>
+                    </div>
+                </div>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>

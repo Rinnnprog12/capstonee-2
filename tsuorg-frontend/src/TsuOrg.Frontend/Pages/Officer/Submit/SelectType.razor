@@ -1,0 +1,252 @@
+@page "/officer/submit"
+@page "/officer/submit/type"
+@layout PortalLayout
+@attribute [Authorize(Roles = "OrgOfficer")]
+@inject NavigationManager Nav
+@inject ApiClient Api
+@inject SubmissionWizardState Wizard
+
+<PageTitle>New Submission · Select Type</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="officer">← Back</a>
+    <h1>New Document Submission</h1>
+</div>
+
+<SubmissionStepper Current="1" />
+
+<div class="wizard-card fig6-select">
+    <h2>Select document type</h2>
+    <p class="hint">Choose the type of document you are submitting.</p>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="form-error" role="alert">@_error</p>
+    }
+
+    @if (_loading)
+    {
+        <p class="hint">Loading document types…</p>
+    }
+    else
+    {
+        <div class="field">
+            <label for="docName">Document name</label>
+            <input id="docName"
+                   class="input"
+                   @bind="_docName"
+                   @bind:event="oninput"
+                   placeholder="Input the name of the file…"
+                   maxlength="200"
+                   autocomplete="off" />
+        </div>
+
+        @if (_orgs.Count > 1)
+        {
+            <div class="field">
+                <label for="org">Organization</label>
+                <select id="org" class="select" @bind="_orgId">
+                    @foreach (var org in _orgs)
+                    {
+                        <option value="@org.Id">@(string.IsNullOrWhiteSpace(org.Acronym) ? org.Name : $"{org.Acronym} — {org.Name}")</option>
+                    }
+                </select>
+            </div>
+        }
+
+        <div class="field">
+            <label for="docType">Document type</label>
+            <select id="docType" class="select" value="@_docTypeId" @onchange="OnTypeChanged">
+                <option value="">Select a document type…</option>
+                @foreach (var t in _types)
+                {
+                    <option value="@t.Id">@t.Name</option>
+                }
+            </select>
+            @if (_selectedType is not null && !string.IsNullOrWhiteSpace(_selectedType.Description))
+            {
+                <p class="field-hint">@_selectedType.Description</p>
+            }
+        </div>
+
+        @if (_selectedType is not null)
+        {
+            <div class="checklist-block">
+                <p class="checklist-title">Required Checklist</p>
+                @if (!RequiredItems.Any() && !OptionalItems.Any() && !ConditionalItems.Any())
+                {
+                    <p class="hint">No attachment checklist for this type.</p>
+                }
+                else
+                {
+                    <ul class="checklist">
+                        @foreach (var item in RequiredItems)
+                        {
+                            <li><span class="ok" aria-hidden="true">✓</span> @item</li>
+                        }
+                        @foreach (var item in OptionalItems)
+                        {
+                            <li class="optional"><span class="opt" aria-hidden="true">+</span> @item <em>(optional — if a separate file)</em></li>
+                        }
+                        @foreach (var item in ConditionalItems)
+                        {
+                            <li class="conditional"><span class="warn" aria-hidden="true">!</span> @item <em>(conditional)</em></li>
+                        }
+                    </ul>
+                }
+            </div>
+        }
+
+        <div class="wizard-actions">
+            <button type="button"
+                    class="btn btn-primary"
+                    disabled="@(!CanContinue || _busy)"
+                    @onclick="ContinueAsync">
+                @(_busy ? "Creating…" : "Continue →")
+            </button>
+            <a class="btn btn-ghost" href="officer">Cancel</a>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private string _docName = string.Empty;
+    private string _docTypeId = string.Empty;
+    private string _orgId = string.Empty;
+
+    private List<DocumentTypeDto> _types = [];
+    private List<OrganizationDto> _orgs = [];
+    private AcademicYearDto? _ay;
+    private DocumentTypeDto? _selectedType;
+
+    /// <summary>Mandatory attachment files for the selected type (Figure 6 Required Checklist).</summary>
+    private IEnumerable<string> RequiredItems =>
+        (_selectedType?.Requirements ?? [])
+        .Where(r => r.IsAttachment && r.IsMandatory && !r.IsConditional)
+        .Select(r => r.DisplayName);
+
+    private IEnumerable<string> OptionalItems =>
+        (_selectedType?.Requirements ?? [])
+        .Where(r => r.IsAttachment && !r.IsMandatory && !r.IsConditional)
+        .Select(r => r.DisplayName);
+
+    private IEnumerable<string> ConditionalItems =>
+        (_selectedType?.Requirements ?? [])
+        .Where(r => r.IsAttachment && r.IsConditional)
+        .Select(r => r.DisplayName);
+
+    private bool CanContinue =>
+        !string.IsNullOrWhiteSpace(_docName)
+        && _selectedType is not null
+        && _ay is not null
+        && Guid.TryParse(_orgId, out _)
+        && _types.Count > 0
+        && _orgs.Count > 0
+        && !_busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var typesTask = Api.GetDocumentTypesAsync();
+            var orgsTask = Api.GetMyOrganizationsAsync();
+            var ayTask = Api.GetCurrentAcademicYearAsync();
+            await Task.WhenAll(typesTask, orgsTask, ayTask);
+
+            _types = (await typesTask).ToList();
+            _orgs = (await orgsTask).ToList();
+            _ay = await ayTask;
+
+            if (_types.Count == 0)
+                _error = "No document types configured. Contact SOU admin.";
+
+            if (_orgs.Count == 0)
+                _error = "You are not assigned to any organization. Contact SOU admin.";
+            else
+                _orgId = _orgs[0].Id.ToString();
+
+            if (_ay is null)
+                _error = "No academic year is configured. Contact SOU admin.";
+
+            // Restore wizard draft selection if user navigated back.
+            if (Wizard.DocumentTypeId is Guid existingTypeId
+                && _types.Any(t => t.Id == existingTypeId))
+            {
+                _docTypeId = existingTypeId.ToString();
+                _selectedType = _types.First(t => t.Id == existingTypeId);
+                if (!string.IsNullOrWhiteSpace(Wizard.Title))
+                    _docName = Wizard.Title;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnTypeChanged(ChangeEventArgs e)
+    {
+        _docTypeId = e.Value?.ToString() ?? "";
+        _selectedType = string.IsNullOrWhiteSpace(_docTypeId)
+            ? null
+            : _types.FirstOrDefault(t => t.Id.ToString() == _docTypeId);
+    }
+
+    private async Task ContinueAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_docName))
+        {
+            _error = "Please enter a document name.";
+            return;
+        }
+        if (_selectedType is null || _ay is null || !Guid.TryParse(_orgId, out var orgId))
+        {
+            _error = "Select a document type and ensure your organization is assigned.";
+            return;
+        }
+
+        var org = _orgs.First(o => o.Id == orgId);
+
+        _busy = true;
+        try
+        {
+            var result = await Api.CreateDocumentAsync(new CreateDocumentRequest(
+                orgId,
+                _selectedType.Id,
+                _ay.Id,
+                _docName.Trim()));
+
+            Wizard.Begin(
+                result.DocumentId,
+                result.DocumentNumber,
+                org.Id,
+                org.Name,
+                _selectedType.Id,
+                _selectedType.Code,
+                _selectedType.Name,
+                _ay.Id,
+                _ay.Label,
+                _docName.Trim(),
+                _selectedType.Requirements);
+
+            Nav.NavigateTo("officer/submit/upload");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -1,0 +1,180 @@
+@page "/review"
+@layout PortalLayout
+@attribute [Authorize(Roles = "Adviser,Dean")]
+@inject ApiClient Api
+@inject AuthSession Session
+@inject NavigationManager Nav
+
+<PageTitle>Adviser / Dean Dashboard</PageTitle>
+
+<div class="welcome">
+    <h2>Hello, @Session.FullName!</h2>
+    <p>
+        You have <strong>@PendingCount</strong> document@(PendingCount == 1 ? "" : "s") pending your review.
+        Your approvals help student organizations move forward.
+    </p>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+<section class="grid-4" aria-label="Review metrics">
+    <div class="stat-card">
+        <div class="stat-icon">⏳</div>
+        <div>
+            <div class="value">@PendingCount</div>
+            <div class="label">Pending review</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">✓</div>
+        <div>
+            <div class="value">@(_dash?.ApprovedThisMonth ?? 0)</div>
+            <div class="label">Approved this month</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">↩</div>
+        <div>
+            <div class="value">@(_dash?.ReturnedCount ?? 0)</div>
+            <div class="label">Returned</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">📁</div>
+        <div>
+            <div class="value">@(_dash?.TotalDocuments ?? 0)</div>
+            <div class="label">Total reviewed</div>
+        </div>
+    </div>
+</section>
+
+<div class="section-head">
+    <h3>Pending review queue</h3>
+    <a class="btn btn-primary btn-sm" href="review/queue">View all →</a>
+</div>
+<section class="panel">
+    @if (_loading)
+    {
+        <p class="hint">Loading…</p>
+    }
+    else if (_queueItems.Count == 0)
+    {
+        <p class="empty-state">No documents waiting for your review.</p>
+    }
+    else
+    {
+        <div class="recent-list" role="list">
+            @foreach (var item in _queueItems)
+            {
+                <button type="button"
+                        class="list-row list-row-btn"
+                        role="listitem"
+                        @onclick="() => OpenReview(item.DocumentId)">
+                    <div class="doc-ico @(item.RequiresHumanReview ? "purple" : "")">📄</div>
+                    <div>
+                        <div class="title">@item.Title</div>
+                        <div class="meta">
+                            @item.DocumentNumber · @item.OrganizationName · @item.SubmittedAt.ToLocalTime().ToString("MMMM d, yyyy")@ScoreMeta(item)
+                        </div>
+                    </div>
+                    <div class="right">
+                        @if (item.RequiresHumanReview)
+                        {
+                            <span class="badge badge-flagged">Flagged</span>
+                        }
+                        else
+                        {
+                            <span class="btn btn-outline-teal btn-sm">Review →</span>
+                        }
+                    </div>
+                </button>
+            }
+        </div>
+    }
+</section>
+
+<div class="section-head" style="margin-top:1.25rem;">
+    <h3>Recently reviewed</h3>
+</div>
+<section class="panel">
+    @if (_dash?.ReviewedDocuments is { Count: > 0 } reviewed)
+    {
+        <div class="recent-list" role="list">
+            @foreach (var doc in reviewed)
+            {
+                <button type="button"
+                        class="list-row list-row-btn"
+                        role="listitem"
+                        @onclick="() => OpenReview(doc.DocumentId)">
+                    <div class="doc-ico @IconTone(doc.Action)">📄</div>
+                    <div>
+                        <div class="title">@doc.Title</div>
+                        <div class="meta">
+                            @doc.DocumentNumber · @doc.OrganizationName · @doc.DecidedAt.ToLocalTime().ToString("MMMM d, yyyy")@(doc.Score is int s ? $" · Score {s}%" : "")
+                        </div>
+                    </div>
+                    <div class="right">
+                        <StatusBadge Status="@ActionBadge(doc.Action)" />
+                    </div>
+                </button>
+            }
+        </div>
+    }
+    else if (!_loading)
+    {
+        <p class="empty-state">No review history yet.</p>
+    }
+</section>
+
+@code {
+    private DashboardDto? _dash;
+    private readonly List<ReviewQueueItemDto> _queueItems = [];
+    private int _queuePendingTotal;
+    private bool _loading = true;
+    private string? _error;
+
+    private int PendingCount => _dash is not null ? _dash.PendingCount : _queuePendingTotal;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            var dashTask = Api.GetDashboardAsync();
+            var queueTask = Api.GetReviewQueueAsync(pageSize: 5);
+            await Task.WhenAll(dashTask, queueTask);
+            _dash = dashTask.Result;
+            var queue = queueTask.Result;
+            _queuePendingTotal = queue.AllCount > 0 ? queue.AllCount : queue.TotalCount;
+            _queueItems.Clear();
+            _queueItems.AddRange(queue.Items);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void OpenReview(Guid id) => Nav.NavigateTo($"/review/decide/{id}?from=queue");
+
+    private static string ScoreMeta(ReviewQueueItemDto item) =>
+        item.LatestValidationConfidence is decimal c ? $" · Score {ToPercent(c)}%" : "";
+
+    private static int ToPercent(decimal confidence) =>
+        (int)Math.Round(confidence > 1m ? confidence : confidence * 100);
+
+    private static string ActionBadge(string action) => action switch
+    {
+        "Approve" => "Approved",
+        "Return"  => "returned",
+        "Reject"  => "returned",
+        _ => action,
+    };
+
+    private static string IconTone(string action) => action switch
+    {
+        "Return" or "Reject" => "danger",
+        _ => "",
+    };
+}

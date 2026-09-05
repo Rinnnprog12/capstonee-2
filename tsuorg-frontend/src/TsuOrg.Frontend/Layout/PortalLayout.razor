@@ -1,0 +1,448 @@
+@inherits LayoutComponentBase
+@inject AuthSession Session
+@inject ApiClient Api
+@inject JwtAuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@implements IDisposable
+
+<div class="portal @(Collapsed ? "sidebar-collapsed" : null) @(MobileNavOpen ? "mobile-nav-open" : null)">
+    @if (MobileNavOpen)
+    {
+        <button type="button"
+                class="mobile-nav-backdrop"
+                aria-label="Close navigation menu"
+                @onclick="CloseMobileNav"></button>
+    }
+
+    <aside class="sidebar" aria-expanded="@(!Collapsed)">
+        <div class="sidebar-brand">
+            <a class="sidebar-brand-main"
+               href="@HomeHref"
+               title="Go to Home"
+               aria-label="Go to Home"
+               @onclick="GoHome"
+               @onclick:preventDefault>
+                <img class="brand-logo" src="images/tsu-logo.png" alt="Tarlac State University" />
+                <strong class="brand-text">Tarlac State University</strong>
+            </a>
+            <button type="button"
+                    class="sidebar-toggle"
+                    title="@(Collapsed ? "Expand sidebar" : "Collapse sidebar")"
+                    aria-label="@(Collapsed ? "Expand sidebar" : "Collapse sidebar")"
+                    @onclick="ToggleSidebarAsync">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3.5" y="4" width="17" height="16" rx="2.5"/>
+                    <path d="M9.5 4v16"/>
+                    @if (Collapsed)
+                    {
+                        <path d="M13.5 9.5 16.5 12l-3 2.5"/>
+                    }
+                    else
+                    {
+                        <path d="M16.5 9.5 13.5 12l3 2.5"/>
+                    }
+                </svg>
+            </button>
+        </div>
+
+        @if (Session.IsSignedIn)
+        {
+            <div class="sidebar-profile" title="@Session.FullName · @Session.RoleDisplayName">
+                <a class="sidebar-avatar" href="account" aria-label="My Account" title="My Account">
+                    @if (!string.IsNullOrWhiteSpace(Session.AvatarDataUrl))
+                    {
+                        <img src="@Session.AvatarDataUrl" alt="" />
+                    }
+                    else
+                    {
+                        <span>@Session.Initials</span>
+                    }
+                </a>
+                <div class="sidebar-profile-name">@Session.FullName</div>
+                <div class="sidebar-profile-meta">
+                    <div>@Session.ProfileLine1</div>
+                    <div>@Session.ProfileLine2</div>
+                </div>
+                <span class="sidebar-role-badge @RoleBadgeClass">@Session.RoleDisplayName</span>
+            </div>
+        }
+
+        <nav class="nav-list" id="portal-sidebar-nav" aria-label="Primary">
+            @foreach (var item in VisibleNavItems)
+            {
+                <NavLink class="nav-item" href="@item.Href" Match="@(item.Exact ? NavLinkMatch.All : NavLinkMatch.Prefix)" title="@item.Label" @onclick="CloseMobileNav">
+                    @((MarkupString)item.Icon)
+                    <span class="nav-label">@item.Label</span>
+                </NavLink>
+            }
+        </nav>
+
+        <button type="button" class="nav-signout" title="Sign out" @onclick="SignOutAsync">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <path d="M16 17l5-5-5-5"/>
+                <path d="M21 12H9"/>
+            </svg>
+            <span class="nav-label">Sign out</span>
+        </button>
+    </aside>
+
+    <div class="portal-main">
+        <header class="topbar">
+            <button type="button"
+                    class="mobile-menu-btn @(MobileNavOpen ? "is-open" : null)"
+                    title="@(MobileNavOpen ? "Close menu" : "Open menu")"
+                    aria-label="@(MobileNavOpen ? "Close navigation menu" : "Open navigation menu")"
+                    aria-expanded="@MobileNavOpen"
+                    aria-controls="portal-sidebar-nav"
+                    @onclick="ToggleMobileNav">
+                <span class="mobile-menu-icon" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </span>
+            </button>
+
+            <div class="topbar-actions">
+            <button type="button" class="icon-btn" title="Language" aria-label="Language">文</button>
+
+            <!-- Notification bell -->
+            <div class="notif-wrap" @onfocusout="OnNotifFocusOut">
+                <button type="button"
+                        class="icon-btn notif-bell @(NotifOpen ? "active" : null)"
+                        title="Notifications"
+                        aria-label="Notifications"
+                        aria-haspopup="menu"
+                        aria-expanded="@NotifOpen"
+                        @onclick="ToggleNotifAsync">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    @if (_unreadCount > 0)
+                    {
+                        <span class="notif-badge" aria-label="@_unreadCount unread notifications">@(_unreadCount > 9 ? "9+" : _unreadCount.ToString())</span>
+                    }
+                </button>
+                @if (NotifOpen)
+                {
+                    <div class="notif-dropdown" role="menu">
+                        <div class="notif-head">
+                            <span>Notifications</span>
+                            @if (_unreadCount > 0)
+                            {
+                                <button type="button" class="notif-read-all" @onclick="MarkAllReadAsync">Mark all read</button>
+                            }
+                        </div>
+                        @if (_notifications.Count == 0)
+                        {
+                            <div class="notif-empty">No new notifications</div>
+                        }
+                        else
+                        {
+                            @foreach (var n in _notifications)
+                            {
+                                <div class="notif-item" role="menuitem">
+                                    <a class="notif-title"
+                                       href="@(n.RelatedDocumentId.HasValue ? $"officer/tracker/{n.RelatedDocumentId}" : "#")"
+                                       @onclick="() => MarkReadAsync(n.Id)">
+                                        @n.Title
+                                    </a>
+                                    <p class="notif-body">@n.Message</p>
+                                    <span class="notif-time">@n.CreatedAt.LocalDateTime.ToString("MMM d, HH:mm")</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="account-menu" @onfocusout="OnAccountMenuFocusOut">
+                <button type="button"
+                        class="icon-btn topbar-avatar-btn @(AccountMenuOpen ? "active" : null)"
+                        title="Account"
+                        aria-label="Account menu"
+                        aria-haspopup="menu"
+                        aria-expanded="@AccountMenuOpen"
+                        @onclick="ToggleAccountMenu">
+                    @if (!string.IsNullOrWhiteSpace(Session.AvatarDataUrl))
+                    {
+                        <img src="@Session.AvatarDataUrl" alt="" />
+                    }
+                    else
+                    {
+                        <span>@Session.Initials</span>
+                    }
+                </button>
+                @if (AccountMenuOpen)
+                {
+                    <div class="account-dropdown" role="menu">
+                        <div class="account-dropdown-head">
+                            <div class="account-dropdown-user">
+                                <div class="account-dropdown-avatar" aria-hidden="true">
+                                    @if (!string.IsNullOrWhiteSpace(Session.AvatarDataUrl))
+                                    {
+                                        <img src="@Session.AvatarDataUrl" alt="" />
+                                    }
+                                    else
+                                    {
+                                        <span>@Session.Initials</span>
+                                    }
+                                </div>
+                                <div>
+                                    <div class="account-dropdown-name">@Session.FullName</div>
+                                    <div class="account-dropdown-email">@Session.Email</div>
+                                    <div class="account-dropdown-role">@Session.RoleDisplayName</div>
+                                </div>
+                            </div>
+                        </div>
+                        <a class="account-dropdown-item" role="menuitem" href="account" @onclick="CloseAccountMenu">
+                            My Account
+                        </a>
+                        <a class="account-dropdown-item" role="menuitem" href="account/settings" @onclick="CloseAccountMenu">
+                            Settings
+                        </a>
+                        <button type="button" class="account-dropdown-item danger" role="menuitem" @onclick="SignOutFromMenuAsync">
+                            Sign out
+                        </button>
+                    </div>
+                }
+            </div>
+            </div>
+            <span class="portal-label">@Session.PortalLabel</span>
+        </header>
+        <main class="content">
+            @Body
+        </main>
+    </div>
+</div>
+
+@code {
+    private const string CollapseKey = "tsuorg.sidebarCollapsed";
+    private bool Collapsed;
+    private bool MobileNavOpen;
+    private bool AccountMenuOpen;
+
+    // ── Notifications ────────────────────────────────────────────────
+    private bool NotifOpen;
+    private int _unreadCount;
+    private readonly List<NotificationDto> _notifications = [];
+    private System.Threading.Timer? _notifTimer;
+
+    private static readonly NavDef[] AllNavItems =
+    [
+        new("/officer", "Home", IconHome, Exact: true, Roles: ["OrgOfficer"]),
+        new("/officer/submit", "New Submission", IconPlus, Roles: ["OrgOfficer"]),
+        new("/officer/tracker", "Document Tracker", IconTrack, Roles: ["OrgOfficer"]),
+        new("/officer/documents", "Org Documents", IconFolder, Roles: ["OrgOfficer"]),
+
+        new("/review", "Home", IconHome, Exact: true, Roles: ["Adviser", "Dean"]),
+        new("/review/queue", "Review Queue", IconQueue, Roles: ["Adviser", "Dean"]),
+        new("/officer/tracker", "Document Tracker", IconTrack, Roles: ["Adviser", "Dean"]),
+        new("/officer/documents", "Repository", IconFolder, Roles: ["Adviser", "Dean"]),
+        new("/review/history", "Review History", IconHistory, Roles: ["Adviser", "Dean"]),
+        new("/review/audit", "Audit Log", IconAudit, Roles: ["Adviser", "Dean"]),
+
+        new("/sou", "Home", IconHome, Exact: true, Roles: ["SouStaff", "SystemAdmin"]),
+        new("/sou/monitor", "Workflow Monitor", IconQueue, Roles: ["SouStaff", "SystemAdmin"]),
+        new("/sou/tracker", "Document Tracker", IconTrack, Roles: ["SouStaff", "SystemAdmin"]),
+        new("/sou/organizations", "Organizations", IconOrgs, Roles: ["SouStaff", "SystemAdmin"]),
+        new("/sou/reports", "Reports", IconReports, Roles: ["SouStaff", "SystemAdmin"]),
+        new("/officer/documents", "Repository", IconFolder, Roles: ["SouStaff", "SystemAdmin"]),
+        new("/sou/audit", "Audit log", IconAudit, Roles: ["SouStaff", "SystemAdmin"]),
+        new("/sou/settings", "System settings", IconSettings, Roles: ["SouStaff", "SystemAdmin"]),
+    ];
+
+    private IEnumerable<NavDef> VisibleNavItems =>
+        AllNavItems.Where(item => Session.IsInRole(item.Roles));
+
+    private string RoleBadgeClass => Session.Role switch
+    {
+        "SouStaff" or "SystemAdmin" => "role-sou",
+        "Adviser" or "Dean" => "role-reviewer",
+        _ => "role-officer",
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var saved = await Js.InvokeAsync<string?>("localStorage.getItem", CollapseKey);
+            if (saved == "1" && !Collapsed)
+            {
+                Collapsed = true;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        if (Session.IsSignedIn)
+        {
+            try
+            {
+                var profile = await Api.GetProfileAsync();
+                if (profile is not null)
+                {
+                    Session.ApplyProfile(profile);
+                    if (!string.IsNullOrWhiteSpace(profile.AvatarUrl)
+                        && string.IsNullOrWhiteSpace(Session.AvatarDataUrl))
+                    {
+                        Session.SetAvatarDataUrl(await Api.GetMyAvatarDataUrlAsync());
+                    }
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // ignore profile hydrate failures
+            }
+        }
+    }
+
+    private string HomeHref =>
+        string.IsNullOrWhiteSpace(Session.HomePath) ? "/officer" : Session.HomePath;
+
+    private void GoHome()
+    {
+        AccountMenuOpen = false;
+        CloseMobileNav();
+        Nav.NavigateTo(HomeHref);
+    }
+
+    private void ToggleMobileNav()
+    {
+        MobileNavOpen = !MobileNavOpen;
+        if (MobileNavOpen)
+        {
+            AccountMenuOpen = false;
+            NotifOpen = false;
+        }
+    }
+
+    private void CloseMobileNav() => MobileNavOpen = false;
+
+    private void ToggleAccountMenu() => AccountMenuOpen = !AccountMenuOpen;
+    private void CloseAccountMenu() => AccountMenuOpen = false;
+
+    private async Task OnAccountMenuFocusOut(FocusEventArgs _)
+    {
+        // Allow click on menu links to register before closing.
+        await Task.Delay(120);
+        AccountMenuOpen = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ToggleSidebarAsync()
+    {
+        Collapsed = !Collapsed;
+        try
+        {
+            await Js.InvokeVoidAsync("localStorage.setItem", CollapseKey, Collapsed ? "1" : "0");
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private async Task SignOutFromMenuAsync()
+    {
+        AccountMenuOpen = false;
+        await SignOutAsync();
+    }
+
+    private async Task SignOutAsync()
+    {
+        CloseMobileNav();
+        await Api.LogoutAsync();
+        await AuthState.SignOutAsync();
+        Nav.NavigateTo("/login");
+    }
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += StateHasChanged;
+        // Poll notifications every 30 s
+        _notifTimer = new System.Threading.Timer(
+            async _ =>
+            {
+                if (!Session.IsSignedIn) return;
+                try
+                {
+                    var result = await Api.GetNotificationsAsync();
+                    _unreadCount = result.UnreadCount;
+                    _notifications.Clear();
+                    _notifications.AddRange(result.Items);
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch { /* best-effort */ }
+            },
+            null,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(30));
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= StateHasChanged;
+        _notifTimer?.Dispose();
+    }
+
+    private async Task ToggleNotifAsync()
+    {
+        NotifOpen = !NotifOpen;
+        if (NotifOpen)
+        {
+            try
+            {
+                var result = await Api.GetNotificationsAsync();
+                _unreadCount = result.UnreadCount;
+                _notifications.Clear();
+                _notifications.AddRange(result.Items);
+            }
+            catch { /* ignore */ }
+        }
+    }
+
+    private async Task OnNotifFocusOut(FocusEventArgs _)
+    {
+        await Task.Delay(120);
+        NotifOpen = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task MarkReadAsync(Guid id)
+    {
+        NotifOpen = false;
+        try { await Api.MarkNotificationReadAsync(id); } catch { /* ignore */ }
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        try
+        {
+            await Api.MarkAllNotificationsReadAsync();
+            _unreadCount = 0;
+            _notifications.Clear();
+        }
+        catch { /* ignore */ }
+    }
+
+    private sealed record NavDef(string Href, string Label, string Icon, bool Exact = false, string[]? Roles = null)
+    {
+        public string[] Roles { get; } = Roles ?? [];
+    }
+
+    private const string IconHome = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z"/></svg>""";
+    private const string IconPlus = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>""";
+    private const string IconTrack = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/><circle cx="16.5" cy="16.5" r="3.5"/><path d="m18.5 18.5 1.5 1.5"/></svg>""";
+    private const string IconFolder = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>""";
+    private const string IconQueue = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>""";
+    private const string IconHistory = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5M12 7v5l3 2"/></svg>""";
+    private const string IconAudit = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16M6 20V10l6-6 6 6v10M9 20v-6h6v6"/></svg>""";
+    private const string IconOrgs = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M4 21V8l8-5 8 5v13M8 21v-4h8v4M8 12h.01M12 12h.01M16 12h.01"/></svg>""";
+    private const string IconReports = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>""";
+    private const string IconSettings = """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg>""";
+}

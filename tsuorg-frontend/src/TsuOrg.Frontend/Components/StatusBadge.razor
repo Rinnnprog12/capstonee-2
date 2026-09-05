@@ -1,0 +1,31 @@
+<span class="badge @Css">@Label</span>
+
+@code {
+    [Parameter] public string Status { get; set; } = "submitted";
+
+    private string Label => Status.Replace('_', ' ');
+
+    private string Css
+    {
+        get
+        {
+            var n = Normalize(Status);
+            if (n.Contains("return") || n is "rejected")
+                return "badge-returned";
+            if (n.Contains("flag"))
+                return "badge-flagged";
+            if (n.Contains("adviser"))
+                return "badge-adviser";
+            if (n.Contains("dean"))
+                return "badge-dean";
+            if (n is "under review" or "underreview" or "review" or "validating" or "sou review")
+                return "badge-review";
+            if (n is "approved" or "sou approved" or "archived" || n.Contains("approved"))
+                return "badge-approved";
+            return "badge-submitted";
+        }
+    }
+
+    private static string Normalize(string status) =>
+        status.Trim().Replace('_', ' ').Replace('—', '-').ToLowerInvariant();
+}

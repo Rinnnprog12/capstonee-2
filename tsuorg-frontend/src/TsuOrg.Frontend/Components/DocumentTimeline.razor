@@ -1,0 +1,88 @@
+@* Vertical document routing timeline (Submitted → … → Approved). *@
+
+<section class="timeline-card @CssClass">
+    @if (!string.IsNullOrWhiteSpace(Title))
+    {
+        <header class="timeline-card-head">
+            <div class="timeline-card-titles">
+                <h3>@Title</h3>
+                @if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <p class="timeline-card-sub">@Subtitle</p>
+                }
+            </div>
+            @if (!string.IsNullOrWhiteSpace(OverallStatus))
+            {
+                <span class="timeline-pill @OverallTone">@OverallStatus</span>
+            }
+        </header>
+    }
+
+    <ol class="doc-timeline" aria-label="Document routing timeline">
+        @for (var i = 0; i < Steps.Count; i++)
+        {
+            var step = Steps[i];
+            var state = GetState(i);
+            <li class="doc-timeline-item @state">
+                <div class="doc-timeline-rail" aria-hidden="true">
+                    <span class="doc-timeline-marker">
+                        @if (state == "done")
+                        {
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M5 12.5 9.5 17 19 7" />
+                            </svg>
+                        }
+                        else
+                        {
+                            <span>@(i + 1)</span>
+                        }
+                    </span>
+                </div>
+                <div class="doc-timeline-content">
+                    <div class="doc-timeline-row">
+                        <div>
+                            <div class="doc-timeline-title">@step.Label</div>
+                            <div class="doc-timeline-date">@(string.IsNullOrWhiteSpace(step.DateText) ? "—" : step.DateText)</div>
+                        </div>
+                        <span class="timeline-pill @ToneFor(state)">@LabelFor(state)</span>
+                    </div>
+                </div>
+            </li>
+        }
+    </ol>
+</section>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? OverallStatus { get; set; }
+    [Parameter] public string OverallTone { get; set; } = "upcoming";
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+    /// <summary>0-based index of the current step. Steps before are done; after are upcoming. -1 = all upcoming.</summary>
+    [Parameter] public int CurrentIndex { get; set; } = -1;
+    [Parameter] public IReadOnlyList<TimelineStep> Steps { get; set; } = Array.Empty<TimelineStep>();
+
+    public sealed record TimelineStep(string Label, string? DateText = null);
+
+    private string GetState(int index)
+    {
+        if (CurrentIndex < 0) return "upcoming";
+        if (index < CurrentIndex) return "done";
+        if (index == CurrentIndex) return "current";
+        return "upcoming";
+    }
+
+    private static string LabelFor(string state) => state switch
+    {
+        "done" => "Completed",
+        "current" => "In Progress",
+        _ => "Upcoming",
+    };
+
+    private static string ToneFor(string state) => state switch
+    {
+        "done" => "done",
+        "current" => "progress",
+        _ => "upcoming",
+    };
+}

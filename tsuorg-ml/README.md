@@ -62,9 +62,38 @@ See `CLAUDE.md` and `/docs/06-CALSV-ENGINE.md`.
 
 Drop labeled samples under `data/raw/` — full instructions in **[DATASET.md](DATASET.md)**.
 
+**Before any training**, validate then convert (small sample first):
+
+```powershell
+# 1) Validate Label Studio JSON (no OCR yet)
+python -m training.scripts.validate_annotations `
+  --input clean-dataset/accomplishment-report/john-lloyd `
+  --images data/raw/images `
+  --fail-on-unknown
+
+# 2) Copy Label Studio media so basenames under data/raw/images match
+#    /data/upload/<project>/<uuid>-filename.ext  →  data/raw/images/**/filename.ext
+
+# 3) Convert small sample (full-page OCR + per-token boxes + background O)
+python -m training.scripts.prepare_dataset `
+  --input  clean-dataset/accomplishment-report/john-lloyd `
+  --images data/raw/images `
+  --output data/processed/dataset.jsonl `
+  --split --limit 20
+
+# 4) Validate converted JSONL
+python -m training.scripts.validate_converted --data data/processed/
+```
+
+Full convert (after images are present):
+
 ```powershell
 python -m training.scripts.prepare_dataset --input data/raw/label_studio_export.json --images data/raw/images --output data/processed/dataset.jsonl --split
 python -m training.scripts.finetune --config training/configs/layoutlmv3_base.yaml --data data/processed/
 ```
+
+Label aliases (`TABLE-*`, `ACTIVITY_PHOTO`, …): `training/configs/label_aliases.yaml`.
+Do **not** modify `clean-dataset/` reference exports.
+Do **not** treat `training/clean-data/*` F1≈1.0 metrics as production-ready (see `HISTORICAL_METRICS.md`).
 
 Without a trained checkpoint, `/v1/validate` still returns **Tesseract OCR text** + rule-based validation (wizard OCR step shows `ocr.full_text`).

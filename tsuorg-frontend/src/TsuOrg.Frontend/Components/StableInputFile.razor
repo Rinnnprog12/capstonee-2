@@ -1,0 +1,23 @@
+@*
+  InputFile must not re-render while OpenReadStream()/ReadAsync() is in progress.
+  Parent StateHasChanged() (including ComponentBase event handling) otherwise
+  replaces the input element and Blazor JS throws _blazorFilesById on null.
+*@
+<InputFile OnChange="OnInput" accept="@Accept" />
+
+@code {
+    private bool _frozen;
+
+    [Parameter] public EventCallback<InputFileChangeEventArgs> OnChange { get; set; }
+    [Parameter] public string? Accept { get; set; }
+
+    protected override bool ShouldRender() => !_frozen;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+            _frozen = true;
+    }
+
+    private Task OnInput(InputFileChangeEventArgs e) => OnChange.InvokeAsync(e);
+}

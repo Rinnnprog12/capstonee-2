@@ -53,16 +53,19 @@ def preprocess_document(image_bytes: bytes) -> PreprocessResult:
     gray = _to_grayscale(img)
     steps_done.append("grayscale")
 
-    # 2. Adaptive thresholding
+    # 2. Adaptive thresholding (used for skew estimation)
     thresh = _adaptive_threshold(gray)
     steps_done.append("adaptive_threshold")
 
-    # 3. Deskew via Hough Line Transform
-    deskewed, angle = _deskew(thresh, gray)
+    # 3. Deskew via Hough Line Transform (rotate grayscale using thresh-estimated angle)
+    deskewed_gray, angle = _deskew(thresh, gray)
     steps_done.append(f"deskew({angle:.2f}deg)")
 
-    # 4. Noise removal (Non-Local Means — keeps text sharp)
-    denoised = _denoise(deskewed)
+    # Re-threshold after rotate so Layer 2 sees the binary page required by CALSV-01.
+    binary = _adaptive_threshold(deskewed_gray)
+
+    # 4. Noise removal on the binary page
+    denoised = _denoise(binary)
     steps_done.append("denoise")
 
     # 5. Border cropping (remove empty margins)

@@ -1,0 +1,194 @@
+@page "/sou/reports"
+@layout PortalLayout
+@attribute [Authorize(Roles = "SouStaff,SystemAdmin")]
+@inject ApiClient Api
+@inject IJSRuntime Js
+
+<PageTitle>System Reports</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="sou">← Back</a>
+    <h1>System reports</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+@if (_loading)
+{
+    <p class="hint">Loading reports…</p>
+}
+else if (_reports is not null)
+{
+    <section class="grid-3 reports-kpi" aria-label="Validation KPIs">
+        <div class="stat-card">
+            <div>
+                <div class="value">@_reports.TotalValidated</div>
+                <div class="label">Validated documents</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div>
+                <div class="value">@_reports.ValidationSuccessRate%</div>
+                <div class="label">Validation success rate</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div>
+                <div class="value">@MinutesLabel(_reports.ProcessingTime.AiValidationMinutes)</div>
+                <div class="label">Avg. AI validation</div>
+            </div>
+        </div>
+    </section>
+
+    <div class="sou-charts">
+        <section class="panel">
+            <div class="panel-title"><h3>Monthly submissions</h3></div>
+            @if (_reports.MonthlySubmissions.All(m => m.Count == 0))
+            {
+                <p class="empty-state">No submissions in the selected period yet.</p>
+            }
+            else
+            {
+                var maxMonth = Math.Max(1, _reports.MonthlySubmissions.Max(m => m.Count));
+                <div class="type-chart" role="img" aria-label="Monthly submission volume">
+                    @foreach (var (month, i) in _reports.MonthlySubmissions.Select((m, i) => (m, i)))
+                    {
+                        var height = month.Count == 0 ? 8 : 18 + 82 * month.Count / maxMonth;
+                        <div class="type-bar-col" title="@month.Label @month.Year: @month.Count">
+                            <span class="type-bar-count">@month.Count</span>
+                            <div class="type-bar @BarTone(i)" style="height:@height%"></div>
+                            <span class="type-bar-label">@month.Label</span>
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="panel">
+            <div class="panel-title"><h3>Avg. processing time</h3></div>
+            <div class="proc-times">
+                <div class="proc-time-row">
+                    <span class="label">OCR processing</span>
+                    <span class="value green-text">@MinutesLabel(_reports.ProcessingTime.OcrMinutes)</span>
+                </div>
+                <div class="proc-time-row">
+                    <span class="label">AI validation</span>
+                    <span class="value green-text">@MinutesLabel(_reports.ProcessingTime.AiValidationMinutes)</span>
+                </div>
+                <div class="proc-time-row">
+                    <span class="label">Adviser review</span>
+                    <span class="value amber-text">@DaysLabel(_reports.ProcessingTime.AdviserReviewDays)</span>
+                </div>
+                <div class="proc-time-row">
+                    <span class="label">Full cycle</span>
+                    <span class="value blue-text">@DaysLabel(_reports.ProcessingTime.FullCycleDays)</span>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <h5 class="export-heading">Export reports</h5>
+    <div class="export-cards">
+        @foreach (var card in ExportCards)
+        {
+            <button type="button"
+                    class="panel export-card"
+                    disabled="@(_downloading == card.Type)"
+                    @onclick="() => ExportAsync(card.Type)">
+                <div>
+                    <div class="title">@card.Title</div>
+                    <div class="meta">@(_downloading == card.Type ? "Preparing download…" : Subtitle(card))</div>
+                </div>
+                <div class="export-ico" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        @((MarkupString)card.SvgPaths)
+                    </svg>
+                </div>
+            </button>
+        }
+    </div>
+}
+
+@code {
+    private sealed record ExportCard(string Type, string Title, string Subtitle, string SvgPaths);
+
+    private static readonly ExportCard[] ExportCards =
+    [
+        new("compliance-summary", "Compliance summary", "All organizations",
+            """<path d="M4 19V9"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19V8"/>"""),
+        new("audit-trail", "Document audit trail", "Full system log · CSV",
+            """<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>"""),
+        new("organization-status", "Organization status", "Active / inactive registry",
+            """<path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-6h6v6"/>"""),
+        new("adviser-performance", "Adviser performance", "Approval rates & turnaround",
+            """<circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 11.5 18 14l3-3"/>"""),
+    ];
+
+    private bool _loading = true;
+    private string? _error;
+    private string? _downloading;
+    private SystemReportsDto? _reports;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _reports = await Api.GetSystemReportsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string Subtitle(ExportCard card)
+    {
+        if (card.Type == "compliance-summary" && !string.IsNullOrWhiteSpace(_reports?.AcademicYearLabel))
+            return $"All organizations · AY {_reports.AcademicYearLabel}";
+        return card.Subtitle;
+    }
+
+    private async Task ExportAsync(string type)
+    {
+        _downloading = type;
+        _error = null;
+        try
+        {
+            var (fileName, contentType, bytes) = await Api.DownloadReportAsync(type);
+            await Js.InvokeVoidAsync("tsuDownloadFile", fileName, contentType, Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _downloading = null;
+        }
+    }
+
+    private static string BarTone(int index) =>
+        new[] { "teal", "green", "teal", "green", "teal" }[index % 5];
+
+    private static string MinutesLabel(double? minutes) => minutes switch
+    {
+        null => "No data",
+        < 1 => "< 1 min",
+        < 60 => $"{Math.Ceiling(minutes.Value)} min",
+        _ => $"{Math.Round(minutes.Value / 60, 1)} hrs",
+    };
+
+    private static string DaysLabel(double? days) => days switch
+    {
+        null => "No data",
+        < 1 => "< 1 day avg",
+        _ => $"{days.Value:0.#} days avg",
+    };
+}

@@ -1,0 +1,114 @@
+@page "/review/audit"
+@layout PortalLayout
+@attribute [Authorize(Roles = "Adviser,Dean")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Audit Log</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="review">← Back</a>
+    <h1>Audit log</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+@if (_loading)
+{
+    <p class="hint">Loading audit log…</p>
+}
+else if (_items.Count == 0)
+{
+    <section class="panel">
+        <p class="empty-state">
+            No audit entries yet for your organizations.
+            OCR, AI validation, confirmations, and review decisions will appear here.
+        </p>
+    </section>
+}
+else
+{
+    <section class="panel audit-panel">
+        <div class="table-scroll">
+            <table class="queue-table audit-table">
+                <thead>
+                    <tr>
+                        <th>DOC ID</th>
+                        <th>Document</th>
+                        <th>Activity</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _items)
+                    {
+                        var local = item.At.ToLocalTime();
+                        <tr class="audit-row" @onclick="() => Open(item.DocumentId)">
+                            <td><strong>@item.DocumentNumber</strong></td>
+                            <td>@item.Title</td>
+                            <td>
+                                <span class="audit-action-label @KindClass(item.ActivityKind)">@ShortActivity(item)</span>
+                            </td>
+                            <td>@local.ToString("MMM d, yyyy")</td>
+                            <td class="audit-time">@local.ToString("HH:mm")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private readonly List<ScopedAuditItemDto> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var result = await Api.GetScopedAuditAsync(pageSize: 100);
+            _items.AddRange(result.Items);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void Open(Guid id) => Nav.NavigateTo($"/officer/tracker/{id}");
+
+    private static string ShortActivity(ScopedAuditItemDto item) => item.ActivityKind switch
+    {
+        "Approve" => "Approved",
+        "Return" => "Returned",
+        "Reject" => "Rejected",
+        "OCR" => "OCR scanning",
+        "AI" => "AI validation",
+        "Confirm" => "Routed / confirmed",
+        "Submit" => "Submitted",
+        _ => Truncate(item.Activity, 64),
+    };
+
+    private static string Truncate(string text, int max) =>
+        string.IsNullOrEmpty(text) ? "—"
+        : text.Length <= max ? text
+        : text[..(max - 1)] + "…";
+
+    private static string KindClass(string kind) => kind switch
+    {
+        "Approve" => "pass",
+        "OCR" or "AI" or "Confirm" or "Submit" => "info",
+        "Return" or "Reject" => "fail",
+        _ => "info",
+    };
+}

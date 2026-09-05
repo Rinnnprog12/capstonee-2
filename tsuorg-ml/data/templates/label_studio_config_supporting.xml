@@ -1,0 +1,49 @@
+<!--
+  Label Studio config — AR Supporting Documents
+  (Photo Documentation, Certificates, Attendance sheets).
+
+  Paste into: Settings -> Labeling Interface -> Code
+
+  Page / doc subtypes (draw only fields present on the page):
+    • Photo Documentation — HEADER, PHOTO_DOCUMENTATION, PICTURES
+    • Photo page (images only) — HEADER, PICTURES
+    • Certificate — HEADER, CERTIFICATE_TITLE, RECIPIENT, PURPOSE,
+                    DATE_AND_VENUE, SIGNATURES
+    • Attendance — TITLE, DATE, NAME, TEAM, SIGNATURES
+-->
+<View>
+  <Header value="Supporting document type"/>
+  <Choices name="doc_type" toName="image" choice="single" required="true">
+    <Choice value="PHOTO_DOCUMENTATION"/>
+    <Choice value="CERTIFICATE"/>
+    <Choice value="ATTENDANCE"/>
+  </Choices>
+
+  <Header value="Page image"/>
+  <Image name="image" value="$image" zoom="true" zoomControl="true"/>
+
+  <Header value="Click a label, draw a box, then type the text inside"/>
+  <Labels name="label" toName="image">
+    <!-- Shared / Photo Documentation -->
+    <Label value="HEADER" background="#ef4444"/>
+    <Label value="PHOTO_DOCUMENTATION" background="#22c55e"/>
+    <Label value="PICTURES" background="#f59e0b"/>
+
+    <!-- Certificate (Participation / Appreciation) -->
+    <Label value="CERTIFICATE_TITLE" background="#16a34a"/>
+    <Label value="RECIPIENT" background="#eab308"/>
+    <Label value="PURPOSE" background="#3b82f6"/>
+    <Label value="DATE_AND_VENUE" background="#a855f7"/>
+    <Label value="SIGNATURES" background="#dc2626"/>
+
+    <!-- Attendance sheet -->
+    <Label value="TITLE" background="#f43f5e"/>
+    <Label value="DATE" background="#fb7185"/>
+    <Label value="NAME" background="#f97316"/>
+    <Label value="TEAM" background="#14b8a6"/>
+  </Labels>
+
+  <TextArea name="transcription" toName="image" perRegion="true"
+            placeholder="Type the text visible in the selected region..."
+            editable="true" required="false"/>
+</View>

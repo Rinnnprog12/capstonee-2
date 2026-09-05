@@ -1,0 +1,72 @@
+{
+  "doc_family": "SUPPORTING",
+  "description": "Percent boxes for AR supporting documents (Label Studio style). Matches analyst annotations: Photo Documentation, Certificate, Attendance.",
+  "page_types": {
+    "photo_documentation": {
+      "doc_type": "PHOTO_DOCUMENTATION",
+      "detect": ["photo documentation"],
+      "exclude": ["certificate of", "attendance", "name", "signature"],
+      "fields": {
+        "HEADER": {"x": 4.0, "y": 2.0, "width": 92.0, "height": 11.0},
+        "PHOTO_DOCUMENTATION": {"x": 5.0, "y": 13.5, "width": 90.0, "height": 14.0},
+        "PICTURES": {"x": 8.0, "y": 28.5, "width": 84.0, "height": 58.0}
+      },
+      "ocr_text_fields": ["HEADER", "PHOTO_DOCUMENTATION"],
+      "notes": "Header = logos + university/college/org/A.Y. Photo Documentation = title + narrative paragraph. Pictures = stacked photo evidence block."
+    },
+    "photo_page": {
+      "doc_type": "PHOTO_DOCUMENTATION",
+      "detect": [],
+      "require_layout": "header_plus_pictures_only",
+      "fields": {
+        "HEADER": {"x": 4.0, "y": 2.0, "width": 92.0, "height": 11.0},
+        "PICTURES": {"x": 8.0, "y": 14.0, "width": 84.0, "height": 72.0}
+      },
+      "ocr_text_fields": ["HEADER"],
+      "notes": "Photo-only continuation page (no Photo Documentation paragraph)."
+    },
+    "certificate": {
+      "doc_type": "CERTIFICATE",
+      "detect": ["certificate of participation", "certificate of appreciation", "is hereby given", "awards this"],
+      "fields": {
+        "HEADER": {"x": 18.0, "y": 4.0, "width": 64.0, "height": 14.0},
+        "CERTIFICATE_TITLE": {"x": 18.0, "y": 20.0, "width": 64.0, "height": 10.0},
+        "RECIPIENT": {"x": 18.0, "y": 34.0, "width": 64.0, "height": 10.0},
+        "PURPOSE": {"x": 14.0, "y": 46.0, "width": 72.0, "height": 14.0},
+        "DATE_AND_VENUE": {"x": 18.0, "y": 62.0, "width": 64.0, "height": 6.0},
+        "SIGNATURES": {"x": 8.0, "y": 70.0, "width": 84.0, "height": 20.0}
+      },
+      "ocr_text_fields": [
+        "HEADER", "CERTIFICATE_TITLE", "RECIPIENT", "PURPOSE", "DATE_AND_VENUE"
+      ],
+      "notes": "Works for Certificate of Participation and Certificate of Appreciation. Signatures often handwritten — leave transcription blank if illegible."
+    },
+    "attendance": {
+      "doc_type": "ATTENDANCE",
+      "detect": ["name", "signature", "team"],
+      "fields": {
+        "TITLE": {"x": 4.0, "y": 2.5, "width": 70.0, "height": 5.5},
+        "DATE": {"x": 4.0, "y": 8.5, "width": 40.0, "height": 4.0},
+        "NAME": {"x": 3.0, "y": 14.0, "width": 34.0, "height": 78.0},
+        "TEAM": {"x": 37.0, "y": 14.0, "width": 28.0, "height": 78.0},
+        "SIGNATURES": {"x": 66.0, "y": 14.0, "width": 30.0, "height": 78.0}
+      },
+      "ocr_text_fields": ["TITLE", "DATE", "NAME", "TEAM"],
+      "notes": "Handwritten attendance / sign-in sheet. TEAM column included (present on form even if not always drawn in sample). SIGNATURES = presence region; OCR text optional."
+    }
+  },
+  "label_glossary": {
+    "HEADER": "University / org logo header block (logos + institution lines + A.Y.)",
+    "PHOTO_DOCUMENTATION": "Title 'Photo Documentation:' plus the activity description paragraph",
+    "PICTURES": "Region containing stacked activity photos / evidence images",
+    "CERTIFICATE_TITLE": "Main certificate heading (e.g. CERTIFICATE OF PARTICIPATION)",
+    "RECIPIENT": "Awardee / organization name receiving the certificate",
+    "PURPOSE": "Reason / citation paragraph for the award",
+    "DATE_AND_VENUE": "Issuance date and place line",
+    "SIGNATURES": "Signature block(s) — officer / principal / guest speaker lines",
+    "TITLE": "Attendance meeting / activity title",
+    "DATE": "Attendance date line",
+    "NAME": "Names column (header + list of attendees)",
+    "TEAM": "Team / role column between Name and Signature"
+  }
+}

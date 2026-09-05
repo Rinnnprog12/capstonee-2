@@ -1,0 +1,144 @@
+{
+  "historical_disclaimer": "HISTORICAL ONLY — Do NOT treat these metrics as production-ready. Generated under the previous prepare_dataset pipeline (~89 pages). Suspected overfitting / easy split / missing background O tokens / possible leakage. Re-evaluate after the corrected dataset pipeline (rectanglelabels, full-page OCR, group-aware splits) passes validation.",
+  "generated_at": "2026-08-18T19:01:26",
+  "task": "SF08 retrain with ORG_NAME OCR-filled from labeled boxes",
+  "note": "ORG_NAME now trained from OCR inside human-drawn boxes (87/89 pages, 40 unique org spans)",
+  "dataset": {
+    "source_export": "training/clean-data/project-8-at-2026-08-18-02-20-792bb188.json",
+    "annotated_tasks": 89,
+    "converted_records": 89,
+    "org_name_pages_with_tokens": 87,
+    "unique_org_spans": 40,
+    "org_word_tokens": 571,
+    "split": {
+      "train": 62,
+      "val": 13,
+      "test": 14
+    }
+  },
+  "best_epoch": {
+    "epoch": 14,
+    "train_loss": 0.1699779024347663,
+    "val_loss": 0.08303141593933105,
+    "token_macro_f1": 0.9999999994853809,
+    "seq_accuracy": 1.0
+  },
+  "final_epoch": {
+    "epoch": 30,
+    "train_loss": 0.050761323887854815,
+    "val_loss": 0.028088193386793137,
+    "token_macro_f1": 0.9999999994853809,
+    "seq_accuracy": 1.0
+  },
+  "test_metrics": {
+    "token_classification": {
+      "ACTIVITY_DATE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "ACTIVITY_MODE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "ACTIVITY_TITLE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "ADVISER_SIGNATURE": {
+        "precision": 1.0,
+        "recall": 0.883,
+        "f1": 0.9379
+      },
+      "DATE_PROPOSAL": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "FORM_TITLE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "OBJECTIVES": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "ORG_NAME": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "ORG_OFFICER_SIGNATURE": {
+        "precision": 0.8866,
+        "recall": 1.0,
+        "f1": 0.9399
+      },
+      "PARTICIPANTS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "SAS_SIGNATURE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "VENUE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "macro": {
+        "precision": 0.9905,
+        "recall": 0.9902,
+        "f1": 0.9898
+      }
+    },
+    "sequence_classification": {
+      "confusion_matrix": [
+        [
+          14,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "SF08": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "ACCOMPLISHMENT": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "ACCREDITATION": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "accuracy": 1.0,
+      "macro": {
+        "precision": 0.3333,
+        "recall": 0.3333,
+        "f1": 0.3333
+      }
+    },
+    "num_test_samples": 14
+  },
+  "model_path": "models/layoutlmv3-tsu-v1/best"
+}

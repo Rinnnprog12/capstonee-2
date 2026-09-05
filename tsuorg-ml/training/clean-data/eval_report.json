@@ -1,0 +1,111 @@
+{
+  "historical_disclaimer": "HISTORICAL ONLY — See HISTORICAL_METRICS.md. Do not treat F1≈1.0 as production-ready.",
+  "token_classification": {
+    "ACTIVITY_DATE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "ACTIVITY_MODE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "ACTIVITY_TITLE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "ADVISER_SIGNATURE": {
+      "precision": 1.0,
+      "recall": 0.883,
+      "f1": 0.9379
+    },
+    "DATE_PROPOSAL": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "FORM_TITLE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "OBJECTIVES": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "ORG_NAME": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "ORG_OFFICER_SIGNATURE": {
+      "precision": 0.8866,
+      "recall": 1.0,
+      "f1": 0.9399
+    },
+    "PARTICIPANTS": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "SAS_SIGNATURE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "VENUE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "macro": {
+      "precision": 0.9905,
+      "recall": 0.9902,
+      "f1": 0.9898
+    }
+  },
+  "sequence_classification": {
+    "confusion_matrix": [
+      [
+        14,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "SF08": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "ACCOMPLISHMENT": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "ACCREDITATION": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "accuracy": 1.0,
+    "macro": {
+      "precision": 0.3333,
+      "recall": 0.3333,
+      "f1": 0.3333
+    }
+  },
+  "num_test_samples": 14
+}

@@ -1,0 +1,242 @@
+@page "/sou"
+@layout PortalLayout
+@attribute [Authorize(Roles = "SouStaff,SystemAdmin")]
+@inject AuthSession Session
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>SOU Admin Dashboard</PageTitle>
+
+<div class="welcome">
+    <h2>Hello, @Session.FullName!</h2>
+    <p>Oversee document validation across student organizations — totals, approval rate, and compliance in real time.</p>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+@if (_loading)
+{
+    <p class="hint">Loading dashboard…</p>
+}
+else if (_dash is not null)
+{
+    <section class="grid-4" aria-label="System overview">
+        <div class="stat-card">
+            <div class="stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H10l2 2h5.5A2.5 2.5 0 0 1 20 9.5v7A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z"/>
+                </svg>
+            </div>
+            <div>
+                <div class="value">@_dash.TotalDocuments</div>
+                <div class="label">Total Documents</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="5" width="16" height="15" rx="2"/>
+                    <path d="M8 3v4M16 3v4M4 10h16"/>
+                </svg>
+            </div>
+            <div>
+                <div class="value">@_dash.SubmittedThisMonth</div>
+                <div class="label">This Month</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 13.5 9.5 18 19 7"/>
+                </svg>
+            </div>
+            <div>
+                <div class="value">@_dash.ApprovalRate%</div>
+                <div class="label">Approval rate</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 20V9.5L12 5l8 4.5V20"/>
+                    <path d="M9 20v-6h6v6"/>
+                </svg>
+            </div>
+            <div>
+                <div class="value">@_dash.ActiveOrgs</div>
+                <div class="label">Active Orgs</div>
+            </div>
+        </div>
+    </section>
+
+    <div class="sou-charts">
+        <section class="panel">
+            <div class="panel-title"><h3>Submitted by type</h3></div>
+            @{
+                var maxType = Math.Max(1, _dash.ByType.Count == 0 ? 1 : _dash.ByType.Max(t => t.Count));
+            }
+            <div class="type-chart" role="img" aria-label="Documents submitted by type">
+                @foreach (var (type, i) in _dash.ByType.Select((t, i) => (t, i)))
+                {
+                    var height = type.Count == 0 ? 8 : 18 + 82 * type.Count / maxType;
+                    <div class="type-bar-col" title="@type.TypeName: @type.Count">
+                        <span class="type-bar-count">@type.Count</span>
+                        <div class="type-bar @BarColor(i)" style="height:@height%"></div>
+                        <span class="type-bar-label">@type.TypeName</span>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-title"><h3>Document status breakdown</h3></div>
+            <div class="status-breakdown">
+                @foreach (var row in StatusBreakdown)
+                {
+                    <div class="status-breakdown-row">
+                        <span class="status-breakdown-label">@row.Label</span>
+                        <span class="status-breakdown-track">
+                            <span class="status-breakdown-fill @row.Css" style="width:@row.Percent%"></span>
+                        </span>
+                        <span class="status-breakdown-pct @row.Css">@row.Percent%</span>
+                    </div>
+                }
+            </div>
+        </section>
+    </div>
+
+    <section class="panel" style="margin-top:1rem;">
+        <div class="panel-title">
+            <h3>Organization compliance snapshot</h3>
+            <a class="btn btn-primary btn-sm" href="sou/organizations">Manage →</a>
+        </div>
+        @if (_dash.OrgCompliance is not { Count: > 0 })
+        {
+            <p class="empty-state">No organization submissions yet. Counts appear after officers confirm documents.</p>
+        }
+        else
+        {
+            <div class="recent-list" role="list">
+                @foreach (var (org, i) in _dash.OrgCompliance.Select((o, i) => (o, i)))
+                {
+                    <button type="button"
+                            class="list-row list-row-btn"
+                            role="listitem"
+                            @onclick="() => OpenOrg(org.OrganizationId)">
+                        <div class="org-avatar @AvatarColor(i)">@OrgInitials(org)</div>
+                        <div>
+                            <div class="title">@org.Name</div>
+                            <div class="meta">@org.Submissions submission@(org.Submissions == 1 ? "" : "s") · @org.Approved approved</div>
+                        </div>
+                        <div class="right">
+                            <span class="score compliance-score @ComplianceTone(org.CompliancePercent)">
+                                <strong>@org.CompliancePercent%</strong><br />
+                                <small>Compliance</small>
+                            </span>
+                        </div>
+                    </button>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="panel" style="margin-top:1rem;">
+        <div class="panel-title">
+            <h3>Recent document validations</h3>
+            <a class="btn btn-outline-teal btn-sm" href="sou/tracker">Tracker →</a>
+        </div>
+        @if (_dash.RecentValidations.Count == 0)
+        {
+            <p class="empty-state">No CALSV results yet. Scores appear after an officer upload is validated.</p>
+        }
+        else
+        {
+            <div class="recent-list" role="list">
+                @foreach (var v in _dash.RecentValidations)
+                {
+                    <button type="button"
+                            class="list-row list-row-btn"
+                            role="listitem"
+                            @onclick="() => OpenDoc(v.DocumentId)">
+                        <div>
+                            <div class="title">@v.Title</div>
+                            <div class="meta">@v.DocumentNumber · @v.OrganizationName · @v.DocumentTypeName</div>
+                        </div>
+                        <div class="right">
+                            <span class="score @ComplianceTone(v.ScorePercent)">@v.ScorePercent%</span>
+                            <div class="meta">@v.DocumentClass</div>
+                        </div>
+                    </button>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private SouDashboardDto? _dash;
+
+    private sealed record BreakdownRow(string Label, int Percent, string Css);
+
+    private IEnumerable<BreakdownRow> StatusBreakdown
+    {
+        get
+        {
+            if (_dash is null) yield break;
+            var b = _dash.StatusBreakdown;
+            yield return new("Approved", b.ApprovedPercent, "ok");
+            yield return new("Under review", b.UnderReviewPercent, "warn");
+            yield return new("Returned", b.ReturnedPercent, "danger");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _dash = await Api.GetSouDashboardAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenOrg(Guid orgId) => Nav.NavigateTo($"/sou/tracker?org={orgId}");
+    private void OpenDoc(Guid id) => Nav.NavigateTo($"/officer/tracker/{id}");
+
+    private static string OrgInitials(OrgComplianceDto org)
+    {
+        if (!string.IsNullOrWhiteSpace(org.Acronym))
+            return org.Acronym[..Math.Min(2, org.Acronym.Length)].ToUpperInvariant();
+        var parts = org.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+            _ => $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}",
+        };
+    }
+
+    private static string AvatarColor(int index) =>
+        new[] { "red", "purple", "blue", "green", "amber" }[index % 5];
+
+    private static string BarColor(int index) =>
+        new[] { "teal", "blue", "purple" }[index % 3];
+
+    private static string ComplianceTone(int pct) => pct switch
+    {
+        >= 80 => "ok",
+        >= 60 => "warn",
+        _ => "danger",
+    };
+}

@@ -1,0 +1,431 @@
+@page "/officer/submit/ocr"
+@layout PortalLayout
+@attribute [Authorize(Roles = "OrgOfficer")]
+@inject NavigationManager Nav
+@inject ApiClient Api
+@inject SubmissionWizardState Wizard
+@implements IDisposable
+
+<PageTitle>New Submission · OCR</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="officer/submit/upload">← Back</a>
+    <h1>New Document Submission</h1>
+</div>
+
+<SubmissionStepper Current="3" />
+
+<div class="wizard-card fig8-ocr">
+    <h2>OCR Processing</h2>
+    <p class="hint">AI-Assisted Optical Character Recognition (OCR) — scanning and extracting raw text from your uploaded documents.</p>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="form-error" role="alert">@_error</p>
+    }
+
+    @if (!Wizard.HasDraft)
+    {
+        <p class="hint">No draft submission found.</p>
+        <a class="btn btn-primary" href="officer/submit">Start over</a>
+    }
+    else
+    {
+        <div class="ocr-grid">
+            <div>
+                <div class="subcard">
+                    <h4>Document Processing Status</h4>
+                    @if (_fileRows.Count == 0)
+                    {
+                        <p class="empty-state" style="padding:0.35rem 0;">No uploaded files yet.</p>
+                    }
+                    else
+                    {
+                        @foreach (var row in _fileRows)
+                        {
+                            <div class="file-status">
+                                <div>
+                                    <div class="ocr-file-title">@row.Title</div>
+                                    <div class="ocr-file-name">@row.FileName</div>
+                                </div>
+                                <span class="@(row.IsFlagged ? "tag-flag" : "tag-pass")">@row.StatusLabel</span>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <p class="ocr-status-line">@_statusMessage</p>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-primary" disabled="@(!_canContinue)" @onclick="Continue">Continue →</button>
+                    <a class="btn btn-ghost" href="officer/submit">Cancel</a>
+                    <button type="button" class="btn btn-ghost" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
+                </div>
+            </div>
+
+            <div class="ocr-side">
+                <div class="subcard">
+                    <h4>OCR Text Preview (Raw Output)</h4>
+                    @if (string.IsNullOrWhiteSpace(_rawPreview))
+                    {
+                        <p class="empty-state" style="padding:0.5rem 0;">
+                            @(_busy ? "Extracting text with Tesseract v5…" : "Waiting for OCR results.")
+                        </p>
+                    }
+                    else
+                    {
+                        <pre class="ocr-preview">@_rawPreview</pre>
+                    }
+                </div>
+
+                <div class="subcard">
+                    <h4>OCR Summary (Confidence Scores)</h4>
+                    @if (_validation is null && !_canContinue)
+                    {
+                        <p class="empty-state" style="padding:0.5rem 0;">No scores available yet.</p>
+                    }
+                    else
+                    {
+                        <div class="kv">
+                            <div>
+                                <span class="k">Text Extracted</span>
+                                <span class="v teal">@FormatOcrAvg(_validation?.OcrAvgConfidence) average</span>
+                            </div>
+                            <div>
+                                <span class="k">Key Fields Identified</span>
+                                <span>@KeyFieldsSummary</span>
+                            </div>
+                            <div>
+                                <span class="k">Flagged</span>
+                                <span class="@(_flagCount > 0 ? "tag-flag" : "tag-pass")">@FlaggedSummary</span>
+                            </div>
+                            @if (_validation is not null)
+                            {
+                                <div>
+                                    <span class="k">Engine</span>
+                                    <span>Tesseract v5 + @_validation.ModelVersion</span>
+                                </div>
+                            }
+                        </div>
+
+                        @if (_flagSamples.Count > 0)
+                        {
+                            <div class="ocr-flag-list">
+                                @foreach (var f in _flagSamples)
+                                {
+                                    <div class="flag-item">
+                                        <span class="flag-dot" aria-hidden="true"></span>
+                                        <span><strong>@f.Token</strong> — @f.Confidence.ToString("0")% (@f.Flag)</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private DocumentDetailDto? _doc;
+    private ValidationDetailDto? _validation;
+    private readonly List<FileRow> _fileRows = [];
+    private readonly List<OcrLowConfidenceFlagDto> _flagSamples = [];
+    private string _statusMessage = "Preparing OCR…";
+    private string _rawPreview = "";
+    private string? _error;
+    private bool _busy;
+    private bool _canContinue;
+    private bool _submitted;
+    private int _flagCount;
+    private CancellationTokenSource? _cts;
+
+    private string KeyFieldsSummary =>
+        _validation?.KeyFieldsIdentified is { Count: > 0 } keys
+            ? string.Join(", ", keys.Take(8))
+            : (_canContinue ? "Raw text extracted (field model pending dataset)" : "—");
+
+    private string FlaggedSummary =>
+        _flagCount <= 0
+            ? "None"
+            : $"{_flagCount} minor (low confidence fields)";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Wizard.HasDraft) return;
+        BuildFileRows(processing: true);
+        _cts = new CancellationTokenSource();
+        await RunPipelineAsync(_cts.Token);
+    }
+
+    private async Task RunPipelineAsync(CancellationToken ct)
+    {
+        _busy = true;
+        _error = null;
+        _canContinue = false;
+        try
+        {
+            _statusMessage = "Loading uploaded documents…";
+            _doc = await Api.GetDocumentAsync(Wizard.DocumentId!.Value, ct);
+            if (_doc is null)
+            {
+                _error = "Document not found.";
+                return;
+            }
+
+            BuildFileRows(processing: true);
+            StateHasChanged();
+
+            if (_doc.Status is "Draft" or "Returned" or "Flagged")
+            {
+                _statusMessage = "Submitting for Tesseract OCR / CALSV…";
+                await Api.SubmitDocumentAsync(Wizard.DocumentId.Value, ct);
+                _submitted = true;
+            }
+
+            _statusMessage = "Scanning documents with Tesseract v5…";
+            for (var i = 0; i < 40 && !ct.IsCancellationRequested; i++)
+            {
+                await Task.Delay(1500, ct);
+                _doc = await Api.GetDocumentAsync(Wizard.DocumentId.Value, ct);
+                _validation = await Api.GetValidationAsync(Wizard.DocumentId.Value, ct);
+
+                if (_validation is not null)
+                {
+                    ApplyResults();
+                    _statusMessage = "OCR process complete. Ready for validation.";
+                    _canContinue = true;
+                    break;
+                }
+
+                if (_doc?.Status is "Flagged" or "UnderReview" or "Returned" or "Submitted")
+                {
+                    BuildFileRows(processing: false, partial: true);
+                    _statusMessage = $"Processing finished with status {_doc.Status}.";
+                    _canContinue = true;
+                    break;
+                }
+
+                StateHasChanged();
+            }
+
+            if (!_canContinue)
+                _statusMessage = "Still processing. Refresh when OCR finishes, or continue later.";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _statusMessage = "OCR pipeline error.";
+            _canContinue = _submitted || _doc is not null;
+            BuildFileRows(processing: false, partial: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void ApplyResults()
+    {
+        if (_validation is null) return;
+
+        _rawPreview = BuildPreview(_validation);
+        var meaningfulFlags = (_validation.LowConfidenceFlags ?? [])
+            .Where(f => f.Token.Any(char.IsLetterOrDigit) && f.Token.Length >= 3)
+            .ToList();
+        _flagCount = meaningfulFlags.Count;
+        _flagSamples.Clear();
+        _flagSamples.AddRange(meaningfulFlags.Take(5));
+
+        BuildFileRows(processing: false);
+    }
+
+    private void BuildFileRows(bool processing, bool partial = false)
+    {
+        _fileRows.Clear();
+        var avgLabel = FormatOcrAvg(_validation?.OcrAvgConfidence);
+
+        // Primary slot from wizard checklist
+        var primaryReq = Wizard.PrimaryAttachmentRequirement;
+        var primaryName = !string.IsNullOrWhiteSpace(_doc?.PrimaryFileName)
+            ? _doc!.PrimaryFileName!
+            : "(no file)";
+        var primaryTitle = primaryReq?.DisplayName
+            ?? (!string.IsNullOrWhiteSpace(_doc?.DocumentTypeName) ? _doc!.DocumentTypeName : "Primary Document");
+
+        _fileRows.Add(new FileRow(
+            primaryTitle,
+            primaryName,
+            processing
+                ? "Scanning…"
+                : partial && _validation is null
+                    ? "Queued"
+                    : $"Text Extracted Score: {avgLabel}",
+            IsPrimary: true,
+            IsFlagged: !processing && _flagCount > 0));
+
+        // Supporting uploads - show real processing status
+        if (_doc is not null)
+        {
+            foreach (var att in _doc.Attachments)
+            {
+                var title = Wizard.AttachmentRequirements
+                    .FirstOrDefault(r => string.Equals(r.RequirementKey, att.AttachmentType, StringComparison.OrdinalIgnoreCase))
+                    ?.DisplayName
+                    ?? att.AttachmentType;
+
+                var status = GetAttachmentStatus(att, processing);
+                var isFlagged = att.ProcessingStatus == "Failed";
+
+                _fileRows.Add(new FileRow(
+                    title,
+                    att.FileName,
+                    status,
+                    IsPrimary: false,
+                    IsFlagged: isFlagged));
+            }
+        }
+        else
+        {
+            foreach (var req in Wizard.AttachmentRequirements.Where(r => r != primaryReq))
+            {
+                _fileRows.Add(new FileRow(req.DisplayName, "(pending upload)", processing ? "Waiting…" : "Missing", false, true));
+            }
+        }
+    }
+
+    private static string GetAttachmentStatus(dynamic att, bool processing)
+    {
+        if (processing)
+            return "Scanning…";
+
+        // Check processing status from backend
+        var status = att.ProcessingStatus?.ToString() ?? "Pending";
+        
+        return status switch
+        {
+            "Pending" => "Waiting…",
+            "Queued" => "Queued",
+            "Processing" => "Processing…",
+            "Completed" => FormatAttachmentCompleted(att),
+            "Failed" => $"Failed: {att.ProcessingError ?? "Unknown error"}",
+            _ => "Unknown"
+        };
+    }
+
+    private static string FormatAttachmentCompleted(dynamic att)
+    {
+        if (att.OcrSummary != null)
+        {
+            var confidence = att.OcrSummary.AvgConfidence;
+            var pct = confidence > 1m ? $"{confidence:F0}%" : confidence.ToString("P0");
+            return $"OCR Complete ({att.OcrSummary.TokenCount} tokens, {pct})";
+        }
+        return "Processed";
+    }
+
+    private static string StatusForAttachment(string key, string title)
+    {
+        var hay = $"{key} {title}".ToLowerInvariant();
+        if (hay.Contains("signature")) return "Signature Page Processed";
+        if (hay.Contains("receipt") || hay.Contains("proof") || hay.Contains("photo"))
+            return "Receipts Extracted";
+        return "Processed";
+    }
+
+    private static string BuildPreview(ValidationDetailDto v)
+    {
+        var structured = BuildStructuredPreview(v);
+        if (!string.IsNullOrWhiteSpace(structured))
+            return structured;
+
+        if (!string.IsNullOrWhiteSpace(v.OcrFullText))
+            return SoftWrap(v.OcrFullText.Trim());
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(
+                string.IsNullOrWhiteSpace(v.RawResponseJson) ? "{}" : v.RawResponseJson);
+            if (doc.RootElement.TryGetProperty("ocr", out var ocr)
+                && ocr.TryGetProperty("full_text", out var ft))
+            {
+                var text = ft.GetString();
+                if (!string.IsNullOrWhiteSpace(text))
+                    return SoftWrap(text.Trim());
+            }
+        }
+        catch { /* ignore */ }
+
+        return "OCR completed, but no full text was returned. Ensure tsuorg-ml is running with Tesseract 5 + tessdata_best.";
+    }
+
+    private static string? BuildStructuredPreview(ValidationDetailDto v)
+    {
+        try
+        {
+            if (v.Fields.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return null;
+
+            var lines = new List<string>();
+            foreach (var f in v.Fields.EnumerateArray())
+            {
+                var name = f.TryGetProperty("name", out var n) ? n.GetString() : null;
+                var matched = f.TryGetProperty("matched_text", out var m) ? m.GetString() : null;
+                var label = f.TryGetProperty("label", out var lb) ? lb.GetString() : null;
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(matched))
+                    continue;
+                if (label is "MISSING") continue;
+
+                var pretty = System.Text.RegularExpressions.Regex.Replace(name, "([a-z])([A-Z])", "$1 $2")
+                    .Replace('_', ' ')
+                    .ToUpperInvariant();
+                lines.Add($"{pretty}: {matched}");
+            }
+
+            return lines.Count > 0 ? string.Join(Environment.NewLine, lines) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string SoftWrap(string text)
+    {
+        if (text.Contains('\n')) return text;
+        // Tesseract often returns space-joined tokens — break into readable lines.
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length <= 12) return text;
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < words.Length; i++)
+        {
+            if (i > 0 && i % 10 == 0) sb.AppendLine();
+            else if (i > 0) sb.Append(' ');
+            sb.Append(words[i]);
+        }
+        return sb.ToString();
+    }
+
+    private static string FormatOcrAvg(decimal? avg)
+    {
+        if (avg is null) return "—";
+        var v = avg.Value;
+        return v > 1m ? $"{v:F0}%" : v.ToString("P0");
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (!Wizard.HasDraft || _busy) return;
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        await RunPipelineAsync(_cts.Token);
+    }
+
+    private void Continue() => Nav.NavigateTo("officer/submit/validation");
+
+    public void Dispose() => _cts?.Cancel();
+
+    private sealed record FileRow(string Title, string FileName, string StatusLabel, bool IsPrimary, bool IsFlagged);
+}

@@ -1,0 +1,24 @@
+# Explicit Label Studio → training token label aliases.
+# Unknown labels that are NOT listed here (and not in TOKEN_LABELS) are REJECTED —
+# they never silently become "O".
+#
+# Rationale (from clean-dataset/accomplishment-report/john-lloyd + AR templates):
+# - TABLE-* appears only on AR summary pages where annotators distinguished table
+#   columns from narrative-page fields. Semantically identical to base AR fields
+#   in data/templates/ar_page_templates.json and label_studio_config_ar.xml.
+# - ACTIVITY_PHOTO appears on AR photo pages; supporting-doc config uses
+#   PHOTO_DOCUMENTATION for the same concept (not PICTURES, which marks image
+#   regions without documentary caption semantics).
+
+aliases:
+  TABLE-ACTIVITY_NO: ACTIVITY_NO
+  TABLE-ACTIVITY_NAME: ACTIVITY_NAME
+  TABLE-ACTIVITY_DATE: ACTIVITY_DATE
+  TABLE-VENUE: VENUE
+  TABLE-INVOLVEMENT: INVOLVEMENT
+  TABLE-LEVEL: LEVEL
+  TABLE-EXTENT_OF_BENEFITS: EXTENT_OF_BENEFITS
+  ACTIVITY_PHOTO: PHOTO_DOCUMENTATION
+
+# Labels intentionally excluded from token training (still reported, never → O).
+exclude: []

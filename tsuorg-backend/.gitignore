@@ -1,0 +1,62 @@
+# ASP.NET / .NET
+bin/
+obj/
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rtifacts/
+publish/
+out/
+*.user
+*.userosscache
+*.suo
+*.cache
+*.dll
+*.exe
+*.pdb
+*.log
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Visual Studio / Rider
+.vs/
+*.rsuser
+*.sln.iml
+_ReSharper*/
+*.DotSettings.user
+
+# Local settings & secrets
+appsettings.Development.json
+appsettings.*.local.json
+secrets.json
+*.pfx
+
+# EF / DB local
+*.db
+*.db-shm
+*.db-wal
+*.mdf
+*.ldf
+
+# Azurite / local blob
+App_Data/
+__blobstorage__/
+__queuestorage__/
+__azurite_db*__.json
+AzuriteConfig
+
+# Test / coverage
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# NuGet
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
