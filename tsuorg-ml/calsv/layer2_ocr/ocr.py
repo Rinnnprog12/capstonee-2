@@ -70,7 +70,12 @@ def _configure_tesseract() -> None:
 
 
 def _build_tesseract_config(settings) -> str:
-    """Accuracy-oriented Tesseract CLI config string."""
+    """Accuracy-oriented Tesseract CLI config string.
+
+    Note: tessdata path is handled via TESSDATA_PREFIX env-var set in
+    _configure_tesseract() rather than --tessdata-dir so that Windows paths
+    containing spaces are not mishandled by pytesseract's command builder.
+    """
     parts = [
         f"--oem {settings.tesseract_oem}",
         f"--psm {settings.tesseract_psm}",
@@ -79,11 +84,6 @@ def _build_tesseract_config(settings) -> str:
     ]
     if settings.tesseract_preserve_spaces:
         parts.append("-c preserve_interword_spaces=1")
-
-    # Prefer tessdata_best explicitly when folder exists
-    tessdata = settings.tessdata_dir.strip()
-    if tessdata and Path(tessdata).is_dir():
-        parts.append(f'--tessdata-dir "{tessdata}"')
 
     return " ".join(parts)
 

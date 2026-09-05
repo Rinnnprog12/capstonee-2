@@ -1,0 +1,101 @@
+@page "/account/settings"
+@layout PortalLayout
+@attribute [Authorize(Roles = "OrgOfficer,Adviser,Dean,SouStaff,SystemAdmin")]
+@inject AuthSession Session
+@inject ApiClient Api
+@inject JwtAuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Settings · TSU-ORGDOCX</PageTitle>
+
+<div class="account-page">
+<div class="page-head">
+    <a class="back-btn" href="account">← Back</a>
+    <h1>Settings</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+@if (!string.IsNullOrEmpty(_success))
+{
+    <p class="form-success" role="status">@_success</p>
+}
+
+<section class="panel account-panel">
+    <h2 class="account-section-title">Change password</h2>
+    <p class="hint">After changing your password you will need to sign in again.</p>
+
+    <div class="field">
+        <label for="currentPassword">Current password</label>
+        <input id="currentPassword" type="password" @bind="_current" autocomplete="current-password" />
+    </div>
+    <div class="field">
+        <label for="newPassword">New password</label>
+        <input id="newPassword" type="password" @bind="_next" autocomplete="new-password" />
+    </div>
+    <div class="field">
+        <label for="confirmPassword">Confirm new password</label>
+        <input id="confirmPassword" type="password" @bind="_confirm" autocomplete="new-password" />
+    </div>
+
+    <div class="form-actions">
+        <button type="button" class="btn btn-ghost" disabled="@_busy" @onclick="ChangePasswordAsync">
+            @(_busy ? "Updating…" : "Update password")
+        </button>
+    </div>
+</section>
+</div>
+
+@code {
+    private string _current = string.Empty;
+    private string _next = string.Empty;
+    private string _confirm = string.Empty;
+    private string? _error;
+    private string? _success;
+    private bool _busy;
+
+    private async Task ChangePasswordAsync()
+    {
+        _error = null;
+        _success = null;
+
+        if (string.IsNullOrWhiteSpace(_current) || string.IsNullOrWhiteSpace(_next))
+        {
+            _error = "Current and new password are required.";
+            return;
+        }
+
+        if (_next.Length < 8)
+        {
+            _error = "New password must be at least 8 characters.";
+            return;
+        }
+
+        if (!string.Equals(_next, _confirm, StringComparison.Ordinal))
+        {
+            _error = "New password and confirmation do not match.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await Api.ChangePasswordAsync(_current, _next);
+            _success = "Password updated. Signing you out…";
+            await Task.Delay(600);
+            await Api.LogoutAsync();
+            await AuthState.SignOutAsync();
+            Nav.NavigateTo("/login");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

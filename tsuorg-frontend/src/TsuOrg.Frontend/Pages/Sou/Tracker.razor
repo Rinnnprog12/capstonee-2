@@ -1,0 +1,391 @@
+@page "/sou/tracker"
+@layout PortalLayout
+@attribute [Authorize(Roles = "SouStaff,SystemAdmin")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Document Tracker</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="sou">← Back</a>
+    <h1>Document tracker</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+<input class="input sou-search"
+       type="search"
+       placeholder="Search documents, IDs"
+       @bind="_search"
+       @bind:event="oninput"
+       @bind:after="OnSearchChangedAsync" />
+
+<div class="sou-tracker-layout">
+    <aside class="panel sou-filter-panel">
+        <div class="sou-filter-head">
+            <span>Filter by org</span>
+            <button type="button" class="sou-clear-btn" @onclick="ClearFiltersAsync">Clear all</button>
+        </div>
+
+        <input class="input sou-org-search"
+               type="search"
+               placeholder="Search organizations"
+               @bind="_orgSearch"
+               @bind:event="oninput" />
+
+        <h6 class="sou-filter-label">College / Department</h6>
+        <div class="college-chips">
+            @foreach (var college in _colleges)
+            {
+                <button type="button"
+                        class="college-chip @(_college == college.Code ? "active" : null)"
+                        title="@college.Name"
+                        @onclick="() => ToggleCollegeAsync(college.Code)">
+                    @college.Code
+                </button>
+            }
+            @if (_colleges.Count == 0)
+            {
+                <span class="val-muted">No college catalog</span>
+            }
+        </div>
+
+        <h6 class="sou-filter-label">Compliance status</h6>
+        <div class="compliance-filters">
+            @foreach (var band in ComplianceBands)
+            {
+                <label class="compliance-filter-row">
+                    <span class="compliance-dot @band.Css"></span>
+                    <span>@band.Label</span>
+                    <input type="radio"
+                           name="compliance-band"
+                           checked="@(_band == band.Key)"
+                           @onchange="() => SetBandAsync(band.Key)" />
+                </label>
+            }
+        </div>
+
+        <div class="sou-org-list">
+            @foreach (var (org, i) in VisibleOrgs.Select((o, i) => (o, i)))
+            {
+                <button type="button"
+                        class="sou-org-row @(_orgId == org.OrganizationId ? "active" : null)"
+                        @onclick="() => ToggleOrgAsync(org.OrganizationId)">
+                    <span class="org-avatar sm @AvatarColor(i)">@OrgInitials(org)</span>
+                    <span class="sou-org-name">
+                        @org.Name
+                        <small>@org.College</small>
+                    </span>
+                    <span class="sou-org-pct @ComplianceTone(org.CompliancePercent)">@org.CompliancePercent%</span>
+                </button>
+            }
+        </div>
+    </aside>
+
+    <div class="sou-tracker-main">
+        <div class="stage-count-cards">
+            @foreach (var stage in StageCards)
+            {
+                <button type="button"
+                        class="stage-count-card @(_tab == stage.Tab ? "active" : null)"
+                        @onclick="() => ToggleTabAsync(stage.Tab)">
+                    <div class="value @stage.Css">@TabCount(stage.Tab)</div>
+                    <div class="label">@stage.Label</div>
+                </button>
+            }
+        </div>
+
+        <div class="sou-tracker-toolbar">
+            <span class="teal">Showing @_total document@(_total == 1 ? "" : "s")</span>
+            <label class="tracker-sort">
+                <select class="select" @bind="_sort">
+                    <option value="newest">Sort: newest</option>
+                    <option value="oldest">Sort: oldest</option>
+                </select>
+            </label>
+        </div>
+
+        @if (_loading)
+        {
+            <p class="hint">Loading documents…</p>
+        }
+        else if (SortedItems.Count == 0)
+        {
+            <section class="panel">
+                <p class="empty-state">No documents match the current filters. Officer Confirm submissions appear here university-wide.</p>
+            </section>
+        }
+        else
+        {
+            <div class="tracker-card-list" role="list">
+                @foreach (var doc in SortedItems)
+                {
+                    <button type="button"
+                            class="tracker-doc-card"
+                            role="listitem"
+                            @onclick="() => Open(doc.Id)">
+                        <div class="doc-ico @IconTone(doc.PipelineLabel)">📄</div>
+                        <div class="tracker-doc-card-main">
+                            <div class="tracker-doc-card-title">
+                                @doc.DocumentNumber
+                                <span class="sep">·</span>
+                                @doc.SubmittedAt.ToLocalTime().ToString("MMM d, yyyy")
+                                <span class="sep">·</span>
+                                @doc.OrganizationName
+                            </div>
+                            <div class="tracker-doc-card-meta">
+                                <span>Stage: @doc.PipelineLabel</span>
+                                @if (!string.IsNullOrWhiteSpace(doc.AssignedTo))
+                                {
+                                    <span class="dot">·</span>
+                                    <span>Assigned: @doc.AssignedTo</span>
+                                }
+                                @if (doc.Score is int metaScore)
+                                {
+                                    <span class="dot">·</span>
+                                    <span>Score @metaScore%@(string.IsNullOrWhiteSpace(doc.CleanLabel) ? "" : $" {doc.CleanLabel}")</span>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(doc.CleanLabel))
+                                {
+                                    <span class="dot">·</span>
+                                    <span>@doc.CleanLabel</span>
+                                }
+                                <span class="dot">·</span>
+                                <span>Submitted: @doc.SubmittedAt.ToLocalTime().ToString("MMM d")</span>
+                                @if (doc.DaysElapsed >= 5)
+                                {
+                                    <span class="dot">·</span>
+                                    <span>@doc.DaysElapsed days elapsed</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="tracker-doc-card-status @ScoreTone(doc.Score) status-@BadgeCss(doc.PipelineLabel)">
+                            <span class="status-text">@doc.PipelineLabel</span>
+                            <span class="status-pct">
+                                @(doc.Score is int pct ? $"{pct}%" : "—%")
+                            </span>
+                        </div>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private sealed record StageCard(string Tab, string Label, string Css);
+    private sealed record ComplianceBand(string Key, string Label, string Css);
+
+    private static readonly StageCard[] StageCards =
+    [
+        new("Submitted", "submitted", "teal"),
+        new("AiValidated", "AI validated", "purple-text"),
+        new("AdviserReview", "Adviser review", "amber-text"),
+        new("DeanReview", "Dean review", "blue-text"),
+        new("Approved", "Approved", "green-text"),
+    ];
+
+    private static readonly ComplianceBand[] ComplianceBands =
+    [
+        new("all", "All", ""),
+        new("high", "High (80-100%)", "ok"),
+        new("mid", "Mid (60-79%)", "warn"),
+        new("risk", "At risk (below 60%)", "danger"),
+    ];
+
+    private bool _loading = true;
+    private string? _error;
+    private string _search = "";
+    private string _orgSearch = "";
+    private CancellationTokenSource? _searchCts;
+    private string? _college;
+    private Guid? _orgId;
+    private string _band = "all";
+    private string _tab = "All";
+    private string _sort = "newest";
+    private int _total;
+
+    private List<SouTrackerDocumentDto> _items = [];
+    private List<OrgComplianceDto> _orgs = [];
+    private List<CollegeChipDto> _colleges = [];
+    private Dictionary<string, int> _tabCounts = new(StringComparer.OrdinalIgnoreCase);
+
+    private IEnumerable<OrgComplianceDto> VisibleOrgs
+    {
+        get
+        {
+            IEnumerable<OrgComplianceDto> rows = _orgs;
+            if (!string.IsNullOrWhiteSpace(_college))
+                rows = rows.Where(o => string.Equals(o.College, _college, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(_orgSearch))
+            {
+                var term = _orgSearch.Trim();
+                rows = rows.Where(o =>
+                    o.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || (o.Acronym?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            return rows;
+        }
+    }
+
+    private List<SouTrackerDocumentDto> SortedItems => _sort == "oldest"
+        ? _items.OrderBy(d => d.SubmittedAt).ToList()
+        : _items.OrderByDescending(d => d.SubmittedAt).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var query = new Uri(Nav.Uri).Query.TrimStart('?');
+        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = pair.Split('=', 2);
+            if (kv.Length == 2 && kv[0] == "org" && Guid.TryParse(Uri.UnescapeDataString(kv[1]), out var orgId))
+            {
+                _orgId = orgId;
+                break;
+            }
+        }
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var result = await Api.GetSouTrackerAsync(
+                _tab, 1, 100,
+                string.IsNullOrWhiteSpace(_search) ? null : _search,
+                _college,
+                _orgId,
+                _band);
+            _items = result.Items.ToList();
+            _total = result.TotalCount;
+            _tabCounts = result.TabCounts.ToDictionary(t => t.Tab, t => t.Count, StringComparer.OrdinalIgnoreCase);
+            _colleges = result.Colleges.ToList();
+            _orgs = result.Organizations.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnSearchChangedAsync()
+    {
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        try
+        {
+            await Task.Delay(400, token);
+            await ReloadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+            // newer keystroke
+        }
+    }
+
+    private async Task ToggleCollegeAsync(string college)
+    {
+        _college = _college == college ? null : college;
+        _orgId = null;
+        await ReloadAsync();
+    }
+
+    private async Task ToggleOrgAsync(Guid orgId)
+    {
+        _orgId = _orgId == orgId ? null : orgId;
+        await ReloadAsync();
+    }
+
+    private async Task ToggleTabAsync(string tab)
+    {
+        _tab = _tab == tab ? "All" : tab;
+        await ReloadAsync();
+    }
+
+    private async Task SetBandAsync(string band)
+    {
+        _band = band;
+        await ReloadAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        _search = "";
+        _orgSearch = "";
+        _college = null;
+        _orgId = null;
+        _band = "all";
+        _tab = "All";
+        await ReloadAsync();
+    }
+
+    private int TabCount(string tab) =>
+        _tabCounts.TryGetValue(tab, out var n) ? n : 0;
+
+    private void Open(Guid id) => Nav.NavigateTo($"/sou/tracker/{id}");
+
+    private static string BadgeCss(string pipeline) => pipeline.ToLowerInvariant() switch
+    {
+        "submitted" => "submitted",
+        "ai validated" => "ai",
+        "adviser review" => "adviser",
+        "dean review" => "dean",
+        "sou review" => "sou",
+        "flagged" => "flagged",
+        "returned" => "returned",
+        "approved" or "archived" => "approved",
+        _ => "default",
+    };
+
+    private static string OrgInitials(OrgComplianceDto org)
+    {
+        if (!string.IsNullOrWhiteSpace(org.Acronym))
+            return org.Acronym[..Math.Min(2, org.Acronym.Length)].ToUpperInvariant();
+        var parts = org.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+            _ => $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}",
+        };
+    }
+
+    private static string AvatarColor(int index) =>
+        new[] { "green", "purple", "amber", "pink", "red" }[index % 5];
+
+    private static string ComplianceTone(int pct) => pct switch
+    {
+        >= 80 => "ok",
+        >= 60 => "warn",
+        _ => "danger",
+    };
+
+    private static string ScoreTone(int? score) => score switch
+    {
+        null => "pending",
+        >= 80 => "ok",
+        >= 60 => "warn",
+        _ => "danger",
+    };
+
+    private static string IconTone(string pipeline) => pipeline switch
+    {
+        "Returned" or "Flagged" => "danger",
+        "AI validated" => "purple",
+        "Adviser review" or "Dean review" or "SOU review" => "warn",
+        "Approved" => "",
+        _ => "info",
+    };
+}

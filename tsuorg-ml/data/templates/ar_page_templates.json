@@ -1,0 +1,61 @@
+{
+  "form_no": "TSU-SOU-SF-06",
+  "doc_type": "ACCOMPLISHMENT",
+  "description": "Percent boxes for Accomplishment Report page layouts (Label Studio style).",
+  "page_types": {
+    "cover": {
+      "detect": ["accomplishment report"],
+      "exclude": ["summary of activities", "activity no", "narrative description"],
+      "fields": {
+        "LOGO_HEADER": {"x": 8.0, "y": 2.0, "width": 84.0, "height": 12.0},
+        "ORG_NAME": {"x": 15.0, "y": 18.0, "width": 70.0, "height": 8.5},
+        "REPORT_TITLE": {"x": 15.0, "y": 39.0, "width": 70.0, "height": 5.5},
+        "SEMESTER": {"x": 28.0, "y": 46.0, "width": 44.0, "height": 4.0},
+        "ACADEMIC_YEAR": {"x": 25.0, "y": 52.0, "width": 50.0, "height": 4.0}
+      },
+      "ocr_text_fields": [
+        "LOGO_HEADER", "ORG_NAME", "REPORT_TITLE", "SEMESTER", "ACADEMIC_YEAR"
+      ]
+    },
+    "summary": {
+      "detect": ["summary of activities", "summary table", "name of activity"],
+      "require_any": ["involvement", "extent of benefits", "as organizer"],
+      "fields": {
+        "LOGO_HEADER": {"x": 2.0, "y": 2.0, "width": 45.0, "height": 14.0},
+        "SUMMARY_TITLE": {"x": 25.0, "y": 15.5, "width": 50.0, "height": 6.5},
+        "ACTIVITY_NO": {"x": 2.0, "y": 24.0, "width": 4.5, "height": 52.0},
+        "ACTIVITY_NAME": {"x": 6.5, "y": 24.0, "width": 21.5, "height": 52.0},
+        "ACTIVITY_DATE": {"x": 28.0, "y": 24.0, "width": 8.0, "height": 52.0},
+        "VENUE": {"x": 36.0, "y": 24.0, "width": 10.0, "height": 52.0},
+        "INVOLVEMENT": {"x": 46.0, "y": 22.0, "width": 14.0, "height": 54.0},
+        "EXTENT_OF_BENEFITS": {"x": 60.0, "y": 22.0, "width": 20.0, "height": 54.0},
+        "LEVEL": {"x": 80.0, "y": 22.0, "width": 18.0, "height": 54.0},
+        "SECRETARY_SIGNATURE": {"x": 5.0, "y": 78.0, "width": 28.0, "height": 12.0},
+        "PRESIDENT_SIGNATURE": {"x": 35.0, "y": 78.0, "width": 28.0, "height": 12.0},
+        "ADVISER_SIGNATURE": {"x": 65.0, "y": 78.0, "width": 28.0, "height": 12.0}
+      },
+      "ocr_text_fields": [
+        "LOGO_HEADER", "SUMMARY_TITLE", "ACTIVITY_NO", "ACTIVITY_NAME",
+        "ACTIVITY_DATE", "VENUE", "INVOLVEMENT", "EXTENT_OF_BENEFITS", "LEVEL"
+      ]
+    },
+    "activity": {
+      "detect": ["activity no", "name of activity", "narrative description"],
+      "fields": {
+        "LOGO_HEADER": {"x": 8.0, "y": 2.0, "width": 84.0, "height": 10.0},
+        "ACTIVITY_NO": {"x": 10.0, "y": 12.0, "width": 35.0, "height": 3.0},
+        "ACTIVITY_NAME": {"x": 10.0, "y": 15.0, "width": 80.0, "height": 3.2},
+        "ACTIVITY_DATE": {"x": 10.0, "y": 16.8, "width": 50.0, "height": 2.4},
+        "VENUE": {"x": 10.0, "y": 18.5, "width": 70.0, "height": 3.0},
+        "INVOLVEMENT": {"x": 10.0, "y": 22.0, "width": 80.0, "height": 4.0},
+        "LEVEL": {"x": 10.0, "y": 26.0, "width": 80.0, "height": 5.0},
+        "EXTENT_OF_BENEFITS": {"x": 10.0, "y": 31.5, "width": 80.0, "height": 4.5},
+        "NARRATIVE": {"x": 10.0, "y": 36.5, "width": 80.0, "height": 45.0}
+      },
+      "ocr_text_fields": [
+        "LOGO_HEADER", "ACTIVITY_NO", "ACTIVITY_NAME", "ACTIVITY_DATE", "VENUE",
+        "INVOLVEMENT", "LEVEL", "EXTENT_OF_BENEFITS", "NARRATIVE"
+      ]
+    }
+  }
+}

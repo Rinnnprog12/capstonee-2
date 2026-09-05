@@ -1,0 +1,138 @@
+@page "/sou/audit"
+@layout PortalLayout
+@attribute [Authorize(Roles = "SouStaff,SystemAdmin")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>System Audit Log</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="sou">← Back</a>
+    <h1>System Audit log</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+@if (_loading)
+{
+    <p class="hint">Loading audit log…</p>
+}
+else if (_items.Count == 0)
+{
+    <section class="panel">
+        <p class="empty-state">No audit entries yet. Activity appears as documents move through upload, CALSV, and review.</p>
+    </section>
+}
+else
+{
+    <section class="panel audit-panel">
+        <div class="table-scroll">
+            <table class="queue-table audit-table">
+                <thead>
+                    <tr>
+                        <th>DOC ID</th>
+                        <th>Document</th>
+                        <th>Action</th>
+                        <th>By</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _items)
+                    {
+                        var local = item.At.ToLocalTime();
+                        <tr class="audit-row" @onclick="() => Open(item.DocumentId)">
+                            <td><strong>@item.DocumentNumber</strong></td>
+                            <td>@item.Title</td>
+                            <td>
+                                <span class="audit-action-label @ActionClass(item.Action)">@item.Action</span>
+                            </td>
+                            <td>
+                                <div>@item.ByName</div>
+                                @if (!string.IsNullOrWhiteSpace(item.ByRole)
+                                     && !string.Equals(item.ByName, item.ByRole, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <div class="val-muted audit-by-role">@item.ByRole</div>
+                                }
+                            </td>
+                            <td class="audit-time" title="@local.ToString("yyyy-MM-dd HH:mm:ss")">
+                                @local.ToString("MMM d")
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (_totalPages > 1)
+        {
+            <div class="pager">
+                <button type="button" class="btn btn-outline-teal btn-sm" disabled="@(_page <= 1)" @onclick="PrevPage">Previous</button>
+                <span class="pager-meta">Page @_page of @_totalPages · @_totalCount entries</span>
+                <button type="button" class="btn btn-outline-teal btn-sm" disabled="@(_page >= _totalPages)" @onclick="NextPage">Next</button>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private int _page = 1;
+    private int _pageSize = 50;
+    private int _totalCount;
+    private int _totalPages = 1;
+    private readonly List<SystemAuditItemDto> _items = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var result = await Api.GetSystemAuditAsync(_page, _pageSize);
+            _items.Clear();
+            _items.AddRange(result.Items);
+            _totalCount = result.TotalCount;
+            _page = result.Page;
+            _totalPages = Math.Max(1, (int)Math.Ceiling(_totalCount / (double)_pageSize));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page <= 1) return;
+        _page--;
+        await LoadAsync();
+    }
+
+    private async Task NextPage()
+    {
+        if (_page >= _totalPages) return;
+        _page++;
+        await LoadAsync();
+    }
+
+    private void Open(Guid id) => Nav.NavigateTo($"/officer/tracker/{id}");
+
+    private static string ActionClass(string action) => action switch
+    {
+        "Approved" or "Confirmed" or "AI validated" => "pass",
+        "Submitted" or "OCR scanned" => "info",
+        "Returned" or "Rejected" or "AI flagged" => "fail",
+        _ => "info",
+    };
+}

@@ -1,0 +1,138 @@
+@page "/review/history"
+@layout PortalLayout
+@attribute [Authorize(Roles = "Adviser,Dean")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Review History</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="review">← Back</a>
+    <h1>Review History</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+<div class="tabs">
+    @foreach (var tab in Tabs)
+    {
+        <button type="button"
+                class="tab @(_tab == tab.Api ? "active" : null)"
+                @onclick="() => SwitchTabAsync(tab.Api)">
+            @tab.Label (@TabCount(tab.Api))
+        </button>
+    }
+</div>
+
+@if (_loading)
+{
+    <p class="hint">Loading history…</p>
+}
+else if (_items.Count == 0)
+{
+    <section class="panel">
+        <p class="empty-state">
+            No completed reviews yet. Decisions you make on student organization
+            submissions (Approve / Return / Reject) appear here.
+        </p>
+    </section>
+}
+else
+{
+    <div class="recent-list" role="list">
+        @foreach (var item in _items)
+        {
+            <button type="button"
+                    class="list-row list-row-btn"
+                    role="listitem"
+                    @onclick="() => Open(item.DocumentId)">
+                <div class="doc-ico @IconTone(item.Action)">📄</div>
+                <div>
+                    <div class="title">@item.Title</div>
+                    <div class="meta">
+                        @item.DocumentNumber · @item.OrganizationName · @item.DecidedAt.ToLocalTime().ToString("MMMM d, yyyy")
+                    </div>
+                </div>
+                <div class="right">
+                    <StatusBadge Status="@BadgeStatus(item.Action)" />
+                </div>
+            </button>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Figure 19 — archival filter tabs.</summary>
+    private static readonly (string Api, string Label)[] Tabs =
+    [
+        ("All", "All"),
+        ("Approved", "Approved"),
+        ("Returned", "Returned"),
+    ];
+
+    private string _tab = "All";
+    private bool _loading = true;
+    private string? _error;
+    private int _allCount;
+    private int _approvedCount;
+    private int _returnedCount;
+    private readonly List<ReviewHistoryItemDto> _items = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task SwitchTabAsync(string tab)
+    {
+        if (_tab == tab && !_loading) return;
+        _tab = tab;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var result = await Api.GetMyReviewHistoryAsync(_tab);
+            _items.Clear();
+            _items.AddRange(result.Items);
+            _allCount = result.AllCount;
+            _approvedCount = result.ApprovedCount;
+            _returnedCount = result.ReturnedCount;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private int TabCount(string tab) => tab switch
+    {
+        "Approved" => _approvedCount,
+        "Returned" => _returnedCount,
+        _ => _allCount,
+    };
+
+    /// <summary>Open evaluation view (decisions locked if already acted).</summary>
+    private void Open(Guid id) => Nav.NavigateTo($"/review/decide/{id}?from=history");
+
+    private static string BadgeStatus(string action) => action switch
+    {
+        "Approve" => "Approved",
+        "Return" or "Reject" => "returned",
+        _ => action,
+    };
+
+    private static string IconTone(string action) => action switch
+    {
+        "Return" or "Reject" => "danger",
+        _ => "",
+    };
+}

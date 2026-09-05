@@ -1,0 +1,275 @@
+@page "/officer/tracker/{DocumentId}"
+@page "/sou/tracker/{DocumentId}"
+@layout PortalLayout
+@attribute [Authorize(Roles = "OrgOfficer,Adviser,Dean,SouStaff,SystemAdmin")]
+@implements IAsyncDisposable
+@inject ApiClient Api
+@inject AuthSession Session
+@inject NavigationManager Nav
+
+<PageTitle>Document Tracker</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="@BackHref">← Back</a>
+    <h1>Document tracker</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+else if (_loading)
+{
+    <p class="hint">Loading timeline…</p>
+}
+else if (_timeline is null)
+{
+    <p class="hint">Document not found.</p>
+}
+else
+{
+    <div class="id-banner">
+        @_timeline.DocumentNumber
+        <span class="id-banner-sep">·</span>
+        @_timeline.Title
+    </div>
+
+    <section class="panel milestone-panel" aria-label="Document routing milestones">
+        <ol class="milestone-bar">
+            @foreach (var step in _timeline.Steps)
+            {
+                <li class="milestone @step.Tone">
+                    <span class="milestone-dot" aria-hidden="true"></span>
+                    <span class="milestone-label">@step.Label</span>
+                    <span class="milestone-state">@step.State</span>
+                </li>
+            }
+        </ol>
+    </section>
+
+    <div class="tracker-detail-grid">
+        <section class="panel tracker-side-panel">
+            <div class="panel-title"><h3>Document Details</h3></div>
+            <div class="kv">
+                <div><span class="k">Organization</span><span>@_timeline.OrganizationName</span></div>
+                <div><span class="k">Type</span><span>@_timeline.DocumentTypeName</span></div>
+                <div><span class="k">Subject</span><span>@_timeline.Title</span></div>
+                <div><span class="k">Submitted by</span><span>@SubmittedByLabel</span></div>
+                <div><span class="k">Adviser</span><span>@(_timeline.AdviserName ?? "—")</span></div>
+                <div>
+                    <span class="k">AI score</span>
+                    <span>
+                        @if (_timeline.Score is int score)
+                        {
+                            <div class="ai-score-block">
+                                <div class="ai-score-bar" aria-hidden="true">
+                                    <span style="width:@score%"></span>
+                                </div>
+                                <span class="ai-score-label">@score% complete</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="val-muted">Pending CALSV</span>
+                        }
+                    </span>
+                </div>
+            </div>
+
+            @if (IsSouView)
+            {
+                <a class="btn @(AwaitingSouAction ? "btn-primary" : "btn-outline-teal") btn-block"
+                   style="margin-top:1rem;"
+                   href="sou/monitor/@_timeline.DocumentId?from=tracker-detail">
+                    Open in workflow monitor
+                </a>
+            }
+            else if (AwaitingMyReview)
+            {
+                <a class="btn btn-primary btn-block" style="margin-top:1rem;" href="review/decide/@_timeline.DocumentId?from=tracker">
+                    Open in review queue
+                </a>
+            }
+        </section>
+
+        <section class="panel tracker-side-panel">
+            <div class="panel-title"><h3>Real-time audit trail</h3></div>
+            @if (_timeline.Events.Count == 0)
+            {
+                <p class="empty-state">No events recorded yet. OCR and AI events appear as CALSV runs.</p>
+            }
+            else
+            {
+                <ul class="audit-trail">
+                    @foreach (var ev in _timeline.Events.OrderByDescending(e => e.OccurredAt))
+                    {
+                        <li>
+                            <span class="audit-trail-dot @AuditDotTone(ev)" aria-hidden="true"></span>
+                            <div>
+                                <div class="audit-trail-time">@FormatWhen(ev.OccurredAt)</div>
+                                <div class="audit-trail-title">@EventHeadline(ev)</div>
+                                @if (!string.IsNullOrWhiteSpace(EventDetail(ev)))
+                                {
+                                    <div class="audit-trail-msg">@EventDetail(ev)</div>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public string DocumentId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private string? _error;
+    private TrackingTimelineDto? _timeline;
+    private CancellationTokenSource? _pollCts;
+
+    private bool IsSouView =>
+        new Uri(Nav.Uri).AbsolutePath.Contains("/sou/tracker", StringComparison.OrdinalIgnoreCase);
+
+    private string BackHref => IsSouView
+        ? "sou/tracker"
+        : Session.Role switch
+        {
+            "SouStaff" or "SystemAdmin" => "sou/tracker",
+            _ => "officer/tracker",
+        };
+
+    private string SubmittedByLabel
+    {
+        get
+        {
+            if (_timeline is null) return "—";
+            return string.IsNullOrWhiteSpace(_timeline.SubmittedByPosition)
+                ? _timeline.SubmittedBy
+                : $"{_timeline.SubmittedBy} ({_timeline.SubmittedByPosition})";
+        }
+    }
+
+    private bool AwaitingSouAction =>
+        _timeline is { CurrentStatus: "UnderReview", CurrentStage: "Sou" };
+
+    private bool AwaitingMyReview =>
+        _timeline is { CurrentStatus: "UnderReview" }
+        && Session.Role switch
+        {
+            "Adviser" => _timeline.CurrentStage == "Adviser",
+            "Dean" => _timeline.CurrentStage == "Dean",
+            "SouStaff" => _timeline.CurrentStage == "Sou",
+            "SystemAdmin" => true,
+            _ => false,
+        };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync(showSpinner: true);
+        RestartPolling();
+    }
+
+    private async Task LoadAsync(bool showSpinner)
+    {
+        if (showSpinner)
+        {
+            _loading = true;
+            _error = null;
+            _timeline = null;
+        }
+
+        if (!Guid.TryParse(DocumentId, out var id))
+        {
+            _error = "Invalid document id.";
+            _loading = false;
+            return;
+        }
+
+        try
+        {
+            var next = await Api.GetTrackingAsync(id);
+            if (next is null)
+            {
+                if (showSpinner)
+                    _error = "Document not found.";
+                return;
+            }
+
+            _timeline = next;
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            if (showSpinner)
+                _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void RestartPolling()
+    {
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+        _pollCts = new CancellationTokenSource();
+        _ = PollAsync(_pollCts.Token);
+    }
+
+    private async Task PollAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await LoadAsync(showSpinner: false);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // navigated away
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_pollCts is null) return;
+        await _pollCts.CancelAsync();
+        _pollCts.Dispose();
+        _pollCts = null;
+    }
+
+    private static string FormatWhen(DateTimeOffset at)
+    {
+        var local = at.ToLocalTime();
+        return local.Date == DateTimeOffset.Now.Date
+            ? $"Today {local:HH:mm}"
+            : local.ToString("MMM d, yyyy HH:mm");
+    }
+
+    private static string EventHeadline(TrackingEventDto ev) =>
+        string.IsNullOrWhiteSpace(ev.Headline) ? ev.Message : ev.Headline;
+
+    private static string EventDetail(TrackingEventDto ev) =>
+        string.IsNullOrWhiteSpace(ev.Detail) ? "" : ev.Detail;
+
+    private static string AuditDotTone(TrackingEventDto ev)
+    {
+        var msg = $"{ev.Headline} {ev.Message}";
+        var stage = ev.Stage ?? "";
+        if (msg.Contains("OCR", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("AI validation", StringComparison.OrdinalIgnoreCase)
+            || stage.Equals("Calsv", StringComparison.OrdinalIgnoreCase))
+            return "ok";
+        if (msg.Contains("Routed", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("SOU approved", StringComparison.OrdinalIgnoreCase)
+            || stage is "Adviser" or "Dean" or "Sou")
+            return "current";
+        return "";
+    }
+}

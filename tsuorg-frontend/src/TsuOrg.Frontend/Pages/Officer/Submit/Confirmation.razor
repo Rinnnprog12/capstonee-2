@@ -1,0 +1,260 @@
+@page "/officer/submit/confirm"
+@layout PortalLayout
+@attribute [Authorize(Roles = "OrgOfficer")]
+@inject NavigationManager Nav
+@inject ApiClient Api
+@inject SubmissionWizardState Wizard
+
+<PageTitle>New Submission · Confirmation</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="officer/submit/validation">← Back</a>
+    <h1>New Document Submission</h1>
+</div>
+
+<SubmissionStepper Current="5" />
+
+<div class="wizard-card fig10-confirm">
+    <h2>Submission Confirmation</h2>
+    <p class="confirm-subtitle">Final Review &amp; Confirmation</p>
+    <p class="hint">
+        @if (_confirmed || (_doc?.IsMetadataLocked ?? false))
+        {
+            <text>Metadata is locked. Audit trail (SHA-256) is generated. Your submission is uneditable.</text>
+        }
+        else
+        {
+            <text>Confirming will lock metadata, generate the SHA-256 audit trail, and send this package to the Adviser review queue. No further edits can be made.</text>
+        }
+    </p>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="form-error" role="alert">@_error</p>
+    }
+    @if (!string.IsNullOrEmpty(_success))
+    {
+        <p class="hint" style="color:#2dd4bf;font-weight:600;">@_success</p>
+    }
+
+    @if (!Wizard.HasDraft && _doc is null)
+    {
+        <p class="hint">No submission in progress.</p>
+        <a class="btn btn-primary" href="officer/tracker">Go to Tracker</a>
+    }
+    else if (_loading)
+    {
+        <p class="hint">Loading document…</p>
+    }
+    else
+    {
+        <div class="meta-card">
+            <div class="meta-cell">
+                <div class="k">Document ID:</div>
+                <div class="v">@DocumentId</div>
+            </div>
+            <div class="meta-cell">
+                <div class="k">Subject:</div>
+                <div class="v">@Subject</div>
+            </div>
+            <div class="meta-cell">
+                <div class="k">Organization:</div>
+                <div class="v">@Organization</div>
+            </div>
+            <div class="meta-cell">
+                <div class="k">Validation Status:</div>
+                <div class="v">@ValidationStatusLabel</div>
+            </div>
+            <div class="meta-cell">
+                <div class="k">Audit Log Created:</div>
+                <div class="v">@(_auditCreated ? "yes" : "pending")</div>
+            </div>
+            <div class="meta-cell">
+                <div class="k">Metadata State:</div>
+                <div class="v">@(_metadataLocked ? "Locked" : "Unlocked")</div>
+            </div>
+        </div>
+
+        @if (_metadataLocked && !string.IsNullOrWhiteSpace(_lockHash))
+        {
+            <p class="hash-line" title="@_lockHash">
+                SHA-256: <code>@_lockHash</code>
+            </p>
+        }
+
+        @if (!_canConfirm && !_metadataLocked)
+        {
+            <p class="form-error" role="alert" style="margin-top:0.75rem;">
+                @_blockReason
+            </p>
+        }
+
+        <p class="hint" style="margin-top:1rem;">
+            Confirming your submission will send the document for official university review.
+            No further edits can be made. Audit Trail and Metadata Locked. Your submission is definitive.
+        </p>
+
+        <div class="wizard-actions">
+            @if (_metadataLocked)
+            {
+                <button type="button" class="btn btn-primary" @onclick="GoTracker">
+                    Continue →
+                </button>
+            }
+            else
+            {
+                <button type="button"
+                        class="btn btn-primary"
+                        disabled="@(_busy || !_canConfirm)"
+                        @onclick="ConfirmAsync">
+                    @(_busy ? "Confirming…" : "Confirm Submission →")
+                </button>
+            }
+            <a class="btn btn-ghost" href="@(_metadataLocked ? "officer/tracker" : "officer/submit/validation")">
+                cancel
+            </a>
+        </div>
+    }
+</div>
+
+@code {
+    private DocumentDetailDto? _doc;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _confirmed;
+    private string? _error;
+    private string? _success;
+    private string? _lockHash;
+    private string? _validationStatusOverride;
+
+    private string DocumentId =>
+        _doc?.DocumentNumber ?? Wizard.DocumentNumber ?? "—";
+
+    private string Subject =>
+        !string.IsNullOrWhiteSpace(_doc?.Title) ? _doc!.Title
+        : !string.IsNullOrWhiteSpace(Wizard.Title) ? Wizard.Title
+        : _doc?.DocumentTypeName ?? Wizard.DocumentTypeName ?? "—";
+
+    private string Organization =>
+        _doc?.OrganizationName ?? Wizard.OrganizationName ?? "—";
+
+    private bool _metadataLocked =>
+        _confirmed || (_doc?.IsMetadataLocked ?? false);
+
+    private bool _auditCreated =>
+        _metadataLocked || !string.IsNullOrWhiteSpace(_doc?.MetadataLockHash);
+
+    private string ValidationStatusLabel
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_validationStatusOverride))
+                return _validationStatusOverride!;
+
+            var cls = _doc?.LatestValidation?.DocumentClass;
+            if (string.IsNullOrWhiteSpace(cls))
+                return _doc?.Status is "UnderReview" ? "Complete" : "Pending";
+
+            if (cls.Equals("Valid Submission", StringComparison.OrdinalIgnoreCase))
+                return (_doc?.LatestValidation?.RequiresHumanReview ?? false)
+                    ? "Complete with minor flags"
+                    : "Complete";
+
+            if (cls.Equals("Requires Human Review", StringComparison.OrdinalIgnoreCase))
+                return "Complete with minor flags";
+
+            return cls;
+        }
+    }
+
+    private bool _canConfirm
+    {
+        get
+        {
+            if (_metadataLocked || _doc is null) return false;
+            var cls = _doc.LatestValidation?.DocumentClass;
+            if (string.IsNullOrWhiteSpace(cls)) return false;
+            if (cls.Equals("Valid Submission", StringComparison.OrdinalIgnoreCase)) return true;
+            if (cls.Equals("Requires Human Review", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+    }
+
+    private string _blockReason
+    {
+        get
+        {
+            if (_doc is null) return "Document not loaded.";
+            if (_doc.LatestValidation is null)
+                return "CALSV validation has not completed. Go back to the OCR / Validation steps.";
+
+            var cls = _doc.LatestValidation.DocumentClass;
+            if (cls.Equals("Valid Submission", StringComparison.OrdinalIgnoreCase)
+                || cls.Equals("Requires Human Review", StringComparison.OrdinalIgnoreCase))
+                return "";
+
+            return $"Cannot confirm while validation is '{cls}'. Fix the flagged issues, re-upload if needed, and re-run validation first.";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Wizard.HasDraft)
+        {
+            _loading = false;
+            return;
+        }
+
+        try
+        {
+            _doc = await Api.GetDocumentAsync(Wizard.DocumentId!.Value);
+            _lockHash = _doc?.MetadataLockHash;
+            if (_doc?.IsMetadataLocked == true)
+                _confirmed = true;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (!Wizard.DocumentId.HasValue || !_canConfirm) return;
+
+        _busy = true;
+        _error = null;
+        _success = null;
+        try
+        {
+            var result = await Api.ConfirmSubmissionAsync(Wizard.DocumentId.Value);
+            _confirmed = true;
+            _lockHash = result.MetadataLockHash;
+            _validationStatusOverride = result.ValidationStatus;
+            _success = result.Message;
+            _doc = await Api.GetDocumentAsync(Wizard.DocumentId.Value);
+
+            await Task.Delay(700);
+            Wizard.Clear();
+            Nav.NavigateTo("officer/tracker");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void GoTracker()
+    {
+        Wizard.Clear();
+        Nav.NavigateTo("officer/tracker");
+    }
+}

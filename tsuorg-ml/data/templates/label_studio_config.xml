@@ -1,0 +1,33 @@
+<!--
+  Label Studio config — SF08 only (TSU-SOU-SF-08).
+  Paste into: Settings -> Labeling Interface -> Code
+-->
+<View>
+  <Header value="Document type"/>
+  <Choices name="doc_type" toName="image" choice="single" required="true">
+    <Choice value="SF08"/>
+  </Choices>
+
+  <Header value="Page image"/>
+  <Image name="image" value="$image" zoom="true" zoomControl="true"/>
+
+  <Header value="Click a label, draw a box, then type the text inside"/>
+  <Labels name="label" toName="image">
+    <Label value="FORM_TITLE" background="#22d3ee"/>
+    <Label value="DATE_PROPOSAL" background="#67e8f9"/>
+    <Label value="ORG_NAME" background="#14b8a6"/>
+    <Label value="OBJECTIVES" background="#fbbf24"/>
+    <Label value="ACTIVITY_TITLE" background="#2dd4bf"/>
+    <Label value="ACTIVITY_DATE" background="#38bdf8"/>
+    <Label value="VENUE" background="#a78bfa"/>
+    <Label value="PARTICIPANTS" background="#fb7185"/>
+    <Label value="ACTIVITY_MODE" background="#f97316"/>
+    <Label value="ORG_OFFICER_SIGNATURE" background="#94a3b8"/>
+    <Label value="ADVISER_SIGNATURE" background="#64748b"/>
+    <Label value="SAS_SIGNATURE" background="#475569"/>
+  </Labels>
+
+  <TextArea name="transcription" toName="image" perRegion="true"
+            placeholder="Type the text visible in the selected region..."
+            editable="true" required="false"/>
+</View>

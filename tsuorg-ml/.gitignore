@@ -28,8 +28,8 @@ htmlcov/
 !.env.example
 
 # Datasets & trained weights (large — keep out of git)
-data/
-models/
+# Use data/* (not data/) so nested !exceptions can re-include templates.
+data/*
 !data/.gitkeep
 !data/templates/
 !data/templates/**
@@ -38,9 +38,24 @@ models/
 !data/raw/README.md
 !data/raw/images/
 !data/raw/images/.gitkeep
+!data/raw/images/**/.gitkeep
 !data/processed/
 !data/processed/.gitkeep
+dataset/
+models/
+training/clean-data/project-*.json
 !models/.gitkeep
+
+# Generated page images / probe renders (heavy — never push)
+data/raw/images/**/*
+!data/raw/images/**/.gitkeep
+data/raw/_ar_probe*/
+data/raw/_sf08_probe*/
+data/raw/label_studio_*.json
+data/raw/prelabel_*.json
+data/raw/manifest.jsonl
+data/raw/inventory.json
+
 *.pt
 *.pth
 *.bin

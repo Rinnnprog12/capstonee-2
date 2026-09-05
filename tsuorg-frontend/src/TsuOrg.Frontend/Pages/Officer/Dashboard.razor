@@ -1,0 +1,158 @@
+@page "/officer"
+@layout PortalLayout
+@attribute [Authorize(Roles = "OrgOfficer")]
+@inject AuthSession Session
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Officer Dashboard</PageTitle>
+
+<div class="welcome">
+    <h2>Hello, @Session.FullName!</h2>
+    <p>Welcome to TSU-ORGDOCX. Submit, track, and manage your organization's documents in real-time.</p>
+    @if (!string.IsNullOrWhiteSpace(Session.Email))
+    {
+        <p class="welcome-meta">Signed in as <strong>@Session.Email</strong></p>
+    }
+</div>
+
+@if (!Session.HasValidOfficerEmail)
+{
+    <p class="form-error" role="alert">
+        Organization officers must use an @("@student.tsu.edu.ph") email. Contact SOU admin to update your account.
+    </p>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+@if (Session.HasValidOfficerEmail && _loading)
+{
+    <p class="hint">Loading dashboard…</p>
+}
+else if (Session.HasValidOfficerEmail)
+{
+    <section class="grid-4" aria-label="Document lifecycle overview">
+        <div class="stat-card">
+            <div class="stat-icon">★</div>
+            <div><div class="value">@_data.TotalSubmitted</div><div class="label">Total Submitted</div></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">📁</div>
+            <div><div class="value">@_data.UnderReview</div><div class="label">Under Review</div></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">✓</div>
+            <div><div class="value">@_data.Approved</div><div class="label">Approved</div></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">↩</div>
+            <div><div class="value">@_data.Returned</div><div class="label">Returned</div></div>
+        </div>
+    </section>
+
+    <section class="grid-3" aria-label="Analytics">
+        <div class="panel metric-big">
+            <div class="label">Outstanding Docs</div>
+            <div class="value">@_data.OutstandingDocs</div>
+        </div>
+        <div class="panel metric-big">
+            <div class="label">Compliance Rate</div>
+            <div class="value">@_data.ComplianceRate%</div>
+        </div>
+        <div class="panel metric-big">
+            <div class="label">Items Flagged</div>
+            <div class="value">@_data.ItemsFlagged</div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-title">
+            <h3>Recent Submissions</h3>
+            <a class="btn btn-outline-teal btn-sm" href="officer/submit">+ New Submission</a>
+        </div>
+
+        @if (_data.RecentDocuments.Count == 0)
+        {
+            <p class="empty-state">No submissions yet. Create your first document to get started.</p>
+        }
+        else
+        {
+            <div class="recent-list" role="list">
+                @foreach (var doc in _data.RecentDocuments)
+                {
+                    <button type="button"
+                            class="list-row list-row-btn"
+                            role="listitem"
+                            @onclick="() => OpenDoc(doc.DocumentId)">
+                        <div class="doc-ico @IconTone(doc.Status)">📄</div>
+                        <div>
+                            <div class="title">@DisplayTitle(doc)</div>
+                            <div class="meta">@doc.DocumentNumber · @doc.SubmittedAt.ToLocalTime().ToString("MMM d, yyyy")</div>
+                        </div>
+                        <div class="right">
+                            <StatusBadge Status="@BadgeStatus(doc.Status)" />
+                        </div>
+                    </button>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private DashboardDto _data = EmptyDashboard();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _data = await Api.GetDashboardAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _data = EmptyDashboard();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenDoc(Guid id) => Nav.NavigateTo($"/officer/tracker/{id}");
+
+    private static string DisplayTitle(RecentDocDto doc) =>
+        string.IsNullOrWhiteSpace(doc.Title) ? doc.DocumentTypeName : doc.Title;
+
+    private static string BadgeStatus(string status) => status switch
+    {
+        "UnderReview" => "Under review",
+        "Submitted" => "Submitted",
+        "Approved" or "Archived" => "Approved",
+        "Returned" => "returned",
+        "Flagged" => "Flagged",
+        "Validating" => "Under review",
+        "Rejected" => "returned",
+        _ => status,
+    };
+
+    private static string IconTone(string status) => status switch
+    {
+        "UnderReview" or "Validating" => "warn",
+        "Returned" or "Rejected" => "danger",
+        "Flagged" => "purple",
+        "Submitted" => "info",
+        _ => "",
+    };
+
+    private static DashboardDto EmptyDashboard() =>
+        new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], [], [], [], 0, 0, []);
+}

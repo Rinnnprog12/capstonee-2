@@ -1,0 +1,189 @@
+@page "/account"
+@layout PortalLayout
+@attribute [Authorize(Roles = "OrgOfficer,Adviser,Dean,SouStaff,SystemAdmin")]
+@inject AuthSession Session
+@inject ApiClient Api
+
+<PageTitle>My Account · TSU-ORGDOCX</PageTitle>
+
+<div class="account-page">
+<div class="page-head">
+    <a class="back-btn" href="@Session.HomePath">← Back</a>
+    <h1>Profile Information</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+@if (!string.IsNullOrEmpty(_success))
+{
+    <p class="form-success" role="status">@_success</p>
+}
+
+<section class="panel account-panel">
+    <div class="account-avatar-block">
+        <div class="account-avatar-preview" aria-hidden="true">
+            @if (!string.IsNullOrWhiteSpace(_avatarPreview ?? Session.AvatarDataUrl))
+            {
+                <img src="@(_avatarPreview ?? Session.AvatarDataUrl)" alt="" />
+            }
+            else
+            {
+                <span>@Session.Initials</span>
+            }
+        </div>
+        <div class="account-avatar-actions">
+            <label class="btn btn-outline-teal btn-sm@(_uploading ? " is-busy" : null)" aria-busy="@_uploading">
+                @(_uploading ? "Uploading…" : "Upload photo")
+                <InputFile OnChange="OnPhotoSelected"
+                           accept="image/png,image/jpeg,image/webp,image/gif"
+                           disabled="@(_uploading || _saving)"
+                           hidden />
+            </label>
+            <p class="hint">JPEG, PNG, WebP, or GIF · max 2 MB</p>
+        </div>
+    </div>
+
+    <div class="field">
+        <label for="fullName">Full name</label>
+        <input id="fullName" type="text" @bind="_fullName" maxlength="256" autocomplete="name" disabled="@(_saving || _uploading)" />
+    </div>
+
+    <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" value="@Session.Email" disabled />
+        <p class="hint">Email is managed by your administrator and used for RBAC.</p>
+    </div>
+
+    <div class="field">
+        <label>Role</label>
+        <input type="text" value="@Session.RoleDisplayName" disabled />
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Session.College))
+    {
+        <div class="field">
+            <label>College</label>
+            <input type="text" value="@Session.College" disabled />
+        </div>
+    }
+
+    <div class="form-actions">
+        <button type="button" class="btn btn-ghost" disabled="@(_saving || _uploading)" @onclick="SaveAsync">
+            @(_saving ? "Saving…" : "Save changes")
+        </button>
+        <a class="btn btn-outline-teal" href="account/settings">Password settings →</a>
+    </div>
+</section>
+</div>
+
+@code {
+    private string _fullName = string.Empty;
+    private string? _avatarPreview;
+    private string? _error;
+    private string? _success;
+    private bool _uploading;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _fullName = Session.FullName;
+        try
+        {
+            var profile = await Api.GetProfileAsync();
+            if (profile is not null)
+            {
+                Session.ApplyProfile(profile);
+                _fullName = profile.FullName;
+                if (!string.IsNullOrWhiteSpace(profile.AvatarUrl)
+                    && string.IsNullOrWhiteSpace(Session.AvatarDataUrl))
+                {
+                    Session.SetAvatarDataUrl(await Api.GetMyAvatarDataUrlAsync());
+                }
+            }
+        }
+        catch
+        {
+            // keep session values
+        }
+    }
+
+    private async Task OnPhotoSelected(InputFileChangeEventArgs e)
+    {
+        if (_uploading || _saving) return;
+
+        _error = null;
+        _success = null;
+        var file = e.File;
+        if (file is null) return;
+
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            _error = "Profile photo must be 2 MB or smaller.";
+            return;
+        }
+
+        _uploading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await using var stream = file.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024);
+            await using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            // Local preview while the blob upload finishes
+            _avatarPreview = $"data:{file.ContentType};base64,{Convert.ToBase64String(ms.ToArray())}";
+            ms.Position = 0;
+            await InvokeAsync(StateHasChanged);
+
+            var profile = await Api.UploadAvatarAsync(ms, file.Name, file.ContentType);
+            Session.ApplyProfile(profile);
+            // Keep the local preview as the display URL (same bytes we just uploaded).
+            Session.SetAvatarDataUrl(_avatarPreview);
+            _avatarPreview = null;
+            _success = "Profile photo updated.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _avatarPreview = null;
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || _uploading) return;
+
+        _error = null;
+        _success = null;
+
+        if (string.IsNullOrWhiteSpace(_fullName) || _fullName.Trim().Length < 2)
+        {
+            _error = "Full name must be at least 2 characters.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var profile = await Api.UpdateProfileAsync(_fullName.Trim());
+            Session.ApplyProfile(profile);
+            _fullName = profile.FullName;
+            _success = "Profile saved.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

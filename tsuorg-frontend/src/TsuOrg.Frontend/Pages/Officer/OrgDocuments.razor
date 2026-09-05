@@ -1,0 +1,378 @@
+@page "/officer/documents"
+@layout PortalLayout
+@attribute [Authorize(Roles = "OrgOfficer,Adviser,Dean,SouStaff,SystemAdmin")]
+@inject NavigationManager Nav
+@inject ApiClient Api
+@inject AuthSession Session
+@inject IJSRuntime Js
+
+<PageTitle>@(IsSou ? "Repository" : "Organization Documents")</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="@HomeHref">← Back</a>
+    <h1>@(IsSou ? "Document Repository" : "All Organization Documents")</h1>
+    @if (Session.Role == "OrgOfficer")
+    {
+        <div style="margin-left:auto;">
+            <a class="btn btn-primary btn-sm" href="officer/submit">+ New submission</a>
+        </div>
+    }
+</div>
+
+<p class="hint archive-lead">
+    Centralized repository of approved and archived organization records — browse by document type folder, academic year, or event keyword.
+</p>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+<section class="panel archive-filters">
+    <div class="archive-filter-grid">
+        @if (IsSou)
+        {
+            <label>
+                <span>Organization</span>
+                <select @bind="_orgId" @bind:after="ReloadAsync">
+                    <option value="">All organizations</option>
+                    @foreach (var o in _orgs)
+                    {
+                        <option value="@o.Id">@(string.IsNullOrWhiteSpace(o.Acronym) ? o.Name : $"{o.Acronym} — {o.Name}")</option>
+                    }
+                </select>
+            </label>
+        }
+
+        <label>
+            <span>Academic year</span>
+            <select @bind="_yearId" @bind:after="ReloadAsync">
+                <option value="">All years</option>
+                @foreach (var y in _years)
+                {
+                    <option value="@y.Id">@y.Label</option>
+                }
+            </select>
+        </label>
+
+        <label>
+            <span>Status</span>
+            <select @bind="_status" @bind:after="ReloadAsync">
+                <option value="">Approved + Archived</option>
+                <option value="Archived">Archived</option>
+                <option value="Approved">Approved</option>
+            </select>
+        </label>
+
+        <label class="archive-search">
+            <span>Event / title</span>
+            <div class="archive-search-row">
+                <input type="search"
+                       placeholder="Search event keyword…"
+                       @bind="_keyword"
+                       @bind:event="oninput"
+                       @onkeydown="OnSearchKey" />
+                <button type="button" class="btn btn-ghost btn-sm" @onclick="ReloadAsync">Search</button>
+            </div>
+        </label>
+    </div>
+</section>
+
+@if (!_loading && _typeOptions.Count > 0)
+{
+    <div class="repo-folders" role="list" aria-label="Document type folders">
+        <button type="button"
+                class="repo-folder @(_typeCode == "" ? "active" : null)"
+                role="listitem"
+                @onclick='() => SelectFolderAsync("")'>
+            <span class="repo-folder-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            </span>
+            <span class="repo-folder-name">All types</span>
+            <span class="repo-folder-count">@_typeOptions.Sum(t => t.Count)</span>
+        </button>
+        @foreach (var (t, i) in _typeOptions.Select((t, i) => (t, i)))
+        {
+            <button type="button"
+                    class="repo-folder @(_typeCode == t.Code ? "active" : null)"
+                    role="listitem"
+                    @onclick="() => SelectFolderAsync(t.Code)">
+                <span class="repo-folder-ico @FolderTone(i)" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                </span>
+                <span class="repo-folder-name">@t.Name</span>
+                <span class="repo-folder-count">@t.Count</span>
+            </button>
+        }
+    </div>
+}
+
+@if (_loading)
+{
+    <p class="hint">Loading repository…</p>
+}
+else if (_items.Count == 0)
+{
+    <section class="panel">
+        <p class="empty-state">No approved or archived documents match these filters yet.</p>
+    </section>
+}
+else
+{
+    <section class="panel">
+        <div class="panel-title">
+            <h3>@(string.IsNullOrWhiteSpace(_typeCode) ? "Repository" : _typeOptions.FirstOrDefault(t => t.Code == _typeCode)?.Name ?? _typeCode)</h3>
+            <span class="hint">@_totalCount document@(_totalCount == 1 ? "" : "s")</span>
+        </div>
+
+        @foreach (var doc in _items)
+        {
+            var expanded = _expandedId == doc.Id;
+            <div class="archive-row-block">
+                <div class="list-row archive-row">
+                    <div class="doc-ico" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 20h16a2 2 0 0 0 2-2V8l-6-6H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2z"/>
+                            <path d="M14 2v6h6"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="title">@doc.Title</div>
+                        <div class="meta">
+                            @doc.DocumentNumber · @doc.DocumentType.Name
+                            · @(doc.AcademicYear ?? "—")
+                            · @(doc.Organization.Acronym ?? doc.Organization.Name)
+                            @if (doc.VersionCount > 0)
+                            {
+                                <span> · @doc.VersionCount version@(doc.VersionCount == 1 ? "" : "s")</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="right">
+                        <StatusBadge Status="@doc.Status" />
+                        <button type="button" class="btn btn-ghost btn-sm" @onclick="() => OpenTracker(doc.Id)">Tracker</button>
+                        @if (doc.VersionCount > 0)
+                        {
+                            <button type="button" class="btn btn-ghost btn-sm" @onclick="() => ToggleVersionsAsync(doc.Id)">
+                                @(expanded ? "Hide versions" : "Versions")
+                            </button>
+                        }
+                        @if (doc.HasPrimaryFile)
+                        {
+                            <button type="button" class="btn btn-outline-teal btn-sm" @onclick="() => DownloadAsync(doc)">Download</button>
+                        }
+                    </div>
+                </div>
+
+                @if (expanded)
+                {
+                    <div class="repo-versions">
+                        @if (_loadingVersions)
+                        {
+                            <p class="hint">Loading versions…</p>
+                        }
+                        else if (_versions.Count == 0)
+                        {
+                            <p class="hint">No revision snapshots yet.</p>
+                        }
+                        else
+                        {
+                            @foreach (var v in _versions)
+                            {
+                                <div class="repo-version-row">
+                                    <span>v@v.VersionNumber</span>
+                                    <span class="meta">@(v.ChangeSummary ?? v.FileName) · @v.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @if (_totalPages > 1)
+        {
+            <div class="pager">
+                <button type="button" class="btn btn-outline-teal btn-sm" disabled="@(_page <= 1)" @onclick="PrevPage">Previous</button>
+                <span class="pager-meta">Page @_page of @_totalPages</span>
+                <button type="button" class="btn btn-outline-teal btn-sm" disabled="@(_page >= _totalPages)" @onclick="NextPage">Next</button>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _loadingVersions;
+    private string? _error;
+    private string _orgId = "";
+    private string _typeCode = "";
+    private string _yearId = "";
+    private string _status = "";
+    private string _keyword = "";
+    private int _page = 1;
+    private const int PageSize = 20;
+    private int _totalCount;
+    private int _totalPages = 1;
+    private Guid? _expandedId;
+    private readonly List<ArchiveDocumentDto> _items = [];
+    private readonly List<ArchiveTypeCountDto> _typeOptions = [];
+    private readonly List<AcademicYearDto> _years = [];
+    private readonly List<OrganizationDto> _orgs = [];
+    private readonly List<DocumentVersionDto> _versions = [];
+
+    private bool IsSou => Session.Role is "SouStaff" or "SystemAdmin";
+    private string HomeHref => Session.Role switch
+    {
+        "SouStaff" or "SystemAdmin" => "sou",
+        "Adviser" or "Dean" => "review",
+        _ => "officer",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _years.AddRange(await Api.GetAcademicYearsAsync());
+            if (IsSou)
+                _orgs.AddRange(await Api.GetOrganizationsAsync());
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _loading = false;
+        }
+    }
+
+    private async Task SelectFolderAsync(string code)
+    {
+        if (_typeCode == code && !_loading) return;
+        _typeCode = code;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        _expandedId = null;
+        _versions.Clear();
+        try
+        {
+            Guid? org = Guid.TryParse(_orgId, out var oid) ? oid : null;
+            Guid? year = Guid.TryParse(_yearId, out var yid) ? yid : null;
+            var type = string.IsNullOrWhiteSpace(_typeCode) ? null : _typeCode;
+            var status = string.IsNullOrWhiteSpace(_status) ? null : _status;
+            var keyword = string.IsNullOrWhiteSpace(_keyword) ? null : _keyword.Trim();
+
+            var countsTask = Api.GetArchiveCategoryCountsAsync(organizationId: org, academicYearId: year);
+            var listTask = Api.GetArchiveAsync(
+                organizationId: org,
+                documentTypeCode: type,
+                eventKeyword: keyword,
+                academicYearId: year,
+                status: status,
+                page: _page,
+                pageSize: PageSize);
+
+            await Task.WhenAll(countsTask, listTask);
+
+            var counts = await countsTask;
+            var list = await listTask;
+
+            _typeOptions.Clear();
+            _typeOptions.AddRange(counts.ByType);
+            _items.Clear();
+            _items.AddRange(list.Items);
+            _totalCount = list.TotalCount;
+            _page = list.Page;
+            _totalPages = Math.Max(1, (int)Math.Ceiling(_totalCount / (double)PageSize));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _items.Clear();
+            _totalCount = 0;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page <= 1) return;
+        _page--;
+        await ReloadAsync();
+    }
+
+    private async Task NextPage()
+    {
+        if (_page >= _totalPages) return;
+        _page++;
+        await ReloadAsync();
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            _page = 1;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ToggleVersionsAsync(Guid documentId)
+    {
+        if (_expandedId == documentId)
+        {
+            _expandedId = null;
+            _versions.Clear();
+            return;
+        }
+
+        _expandedId = documentId;
+        _loadingVersions = true;
+        _versions.Clear();
+        try
+        {
+            _versions.AddRange(await Api.GetDocumentVersionsAsync(documentId));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _expandedId = null;
+        }
+        finally
+        {
+            _loadingVersions = false;
+        }
+    }
+
+    private void OpenTracker(Guid id) => Nav.NavigateTo($"officer/tracker/{id}");
+
+    private async Task DownloadAsync(ArchiveDocumentDto doc)
+    {
+        try
+        {
+            var file = await Api.GetDocumentDownloadAsync(doc.Id);
+            if (file is null || string.IsNullOrWhiteSpace(file.SasUrl))
+            {
+                _error = "Primary file is not available for download.";
+                return;
+            }
+
+            await Js.InvokeVoidAsync("open", file.SasUrl, "_blank");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string FolderTone(int index) =>
+        new[] { "teal", "blue", "purple", "amber", "green" }[index % 5];
+}

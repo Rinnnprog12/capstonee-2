@@ -129,7 +129,7 @@ def evaluate(
 
     processor = AutoProcessor.from_pretrained(model_dir, apply_ocr=False)
 
-    model = TsuOrgLayoutLMv3(model_dir, num_token, num_seq)
+    model = TsuOrgLayoutLMv3(model_dir, num_token, num_seq, id2label=id2label)
     seq_head_path = Path(model_dir) / "seq_head.pt"
     if seq_head_path.exists():
         model.seq_head.load_state_dict(torch.load(seq_head_path, map_location="cpu"))

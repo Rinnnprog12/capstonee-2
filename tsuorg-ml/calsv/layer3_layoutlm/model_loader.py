@@ -71,7 +71,7 @@ def load_model(model_dir: Path) -> bool:
                 nn.Dropout(0.1),
                 nn.Linear(hidden, len(DOC_TYPE_CLASSES)),
             )
-            head.load_state_dict(torch.load(seq_path, map_location=device))
+            head.load_state_dict(torch.load(seq_path, map_location=device, weights_only=True))
             head.to(device)
             head.eval()
             _seq_head = head

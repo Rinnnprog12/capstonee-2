@@ -1,0 +1,389 @@
+@page "/officer/submit/upload"
+@layout PortalLayout
+@attribute [Authorize(Roles = "OrgOfficer")]
+@inject NavigationManager Nav
+@inject ApiClient Api
+@inject SubmissionWizardState Wizard
+
+<PageTitle>New Submission · Upload</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="officer/submit">← Back</a>
+    <h1>New Document Submission</h1>
+</div>
+
+<SubmissionStepper Current="2" />
+
+<div class="wizard-card">
+    <h2>Upload Documents</h2>
+    <p class="hint">
+        @if (Wizard.HasDraft)
+        {
+            <text>@Wizard.DocumentNumber — Upload the primary form. OCR and AI validation run on that file only.</text>
+        }
+        else
+        {
+            <text>Upload the primary form. OCR and AI validation run on that file only.</text>
+        }
+    </p>
+    @if (IsSf08)
+    {
+        <p class="hint">Supporting files below are optional if they are already included in the SF08 PDF.</p>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="form-error" role="alert">@_error</p>
+    }
+
+    @if (!Wizard.HasDraft)
+    {
+        <p class="hint">No draft submission found. Start from Select Type.</p>
+        <a class="btn btn-primary" href="officer/submit">Go to Select Type</a>
+    }
+    else if (_loading)
+    {
+        <p class="hint">Loading upload slots…</p>
+    }
+    else if (_slots.Count == 0)
+    {
+        <p class="hint">No attachment requirements for this document type.</p>
+        <div class="wizard-actions">
+            <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="ContinueAsync">
+                @(_busy ? "Saving…" : "Continue →")
+            </button>
+            <a class="btn btn-ghost" href="officer/submit">Cancel</a>
+        </div>
+    }
+    else
+    {
+        <div class="upload-grid-fig7">
+            @foreach (var slot in _slots)
+            {
+                var zoneClass = slot.State switch
+                {
+                    "done" => "ucard-zone done",
+                    "uploading" => "ucard-zone uploading",
+                    _ => "ucard-zone empty"
+                };
+                <div class="ucard" @key="slot.Requirement.RequirementKey">
+                    <div class="ucard-title">
+                        @slot.Requirement.DisplayName
+                        @if (slot.IsPrimary)
+                        {
+                            <span class="ucard-tag">primary</span>
+                        }
+                        else if (slot.Requirement.IsConditional)
+                        {
+                            <span class="ucard-tag">conditional</span>
+                        }
+                        else if (!IsRequiredSlot(slot))
+                        {
+                            <span class="ucard-tag">optional</span>
+                        }
+                    </div>
+                    <div class="@zoneClass">
+                        <StableInputFile OnChange="e => OnFileSelected(e, slot)"
+                                         Accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,application/pdf,image/png,image/jpeg,image/tiff" />
+
+                        @if (slot.State == "empty")
+                        {
+                            <p class="ucard-placeholder">Drop images/PDF files or click to browse.</p>
+                        }
+                        else if (slot.State == "uploading")
+                        {
+                            <div class="ucard-file">@slot.FileName</div>
+                            <div class="ucard-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@slot.Progress">
+                                <div class="ucard-progress-bar" style="width:@slot.Progress%"></div>
+                            </div>
+                            <div class="ucard-progress-label">@slot.Progress%</div>
+                        }
+                        else
+                        {
+                            <div class="ucard-file">@slot.FileName</div>
+                            <div class="ucard-badge">Uploaded</div>
+                            <div class="ucard-replace-hint">Click to replace</div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <p class="upload-count-hint">
+            @ProvidedCount of @RequiredCount documents provided.
+            @if (OptionalUploadedCount > 0)
+            {
+                <text> (+@OptionalUploadedCount optional)</text>
+            }
+        </p>
+
+        <div class="wizard-actions">
+            <button type="button"
+                    class="btn btn-primary"
+                    disabled="@ContinueDisabled"
+                    @onclick="ContinueAsync">
+                @(_busy ? "Saving…" : "Continue →")
+            </button>
+            <a class="btn btn-ghost" href="officer/submit">Cancel</a>
+        </div>
+    }
+</div>
+
+@code {
+    private string? _error;
+    private bool _loading = true;
+    private bool _busy;
+    private readonly List<UploadSlot> _slots = [];
+
+    private bool IsSf08 =>
+        string.Equals(Wizard.DocumentTypeCode, "SF08", StringComparison.OrdinalIgnoreCase);
+
+    private IEnumerable<UploadSlot> MandatorySlots =>
+        _slots.Where(IsRequiredSlot);
+
+    private int RequiredCount => MandatorySlots.Count();
+    private int ProvidedCount => MandatorySlots.Count(s => s.State == "done");
+    private int OptionalUploadedCount =>
+        _slots.Count(s => !IsRequiredSlot(s) && s.State == "done");
+
+    private bool CanContinue =>
+        Wizard.HasDraft
+        && !_slots.Any(s => s.State == "uploading")
+        && MandatorySlots.All(s => s.State == "done");
+
+    private bool ContinueDisabled => _busy || !CanContinue;
+
+    /// <summary>
+    /// SF08 OCR/AI uses the primary packet only. Extra slots stay optional even
+    /// if an older wizard draft still marked them mandatory.
+    /// </summary>
+    private bool IsRequiredSlot(UploadSlot slot) =>
+        slot.IsPrimary
+        || (!IsSf08 && slot.Requirement.IsMandatory && !slot.Requirement.IsConditional);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Wizard.HasDraft)
+        {
+            _loading = false;
+            return;
+        }
+
+        BuildSlotsFromWizard();
+        await HydrateFromServerAsync();
+        _loading = false;
+    }
+
+    private void BuildSlotsFromWizard()
+    {
+        _slots.Clear();
+        var attachments = Wizard.AttachmentRequirements.ToList();
+        var primaryKey = Wizard.PrimaryAttachmentRequirement?.RequirementKey;
+
+        foreach (var req in attachments)
+        {
+            _slots.Add(new UploadSlot
+            {
+                Requirement = req,
+                IsPrimary = req.RequirementKey == primaryKey,
+            });
+        }
+    }
+
+    private async Task HydrateFromServerAsync()
+    {
+        if (!Wizard.DocumentId.HasValue) return;
+
+        try
+        {
+            var doc = await Api.GetDocumentAsync(Wizard.DocumentId.Value);
+            if (doc is null) return;
+
+            if (!string.IsNullOrWhiteSpace(doc.PrimaryFileName))
+            {
+                var primary = _slots.FirstOrDefault(s => s.IsPrimary);
+                if (primary is not null)
+                {
+                    primary.State = "done";
+                    primary.FileName = doc.PrimaryFileName;
+                    primary.Progress = 100;
+                }
+            }
+
+            foreach (var att in doc.Attachments)
+            {
+                var slot = _slots.FirstOrDefault(s =>
+                    !s.IsPrimary
+                    && string.Equals(s.Requirement.RequirementKey, att.AttachmentType, StringComparison.OrdinalIgnoreCase));
+                if (slot is null) continue;
+                slot.State = "done";
+                slot.FileName = att.FileName;
+                slot.Progress = 100;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not load existing uploads: {ex.Message}";
+        }
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e, UploadSlot slot)
+    {
+        if (!Wizard.DocumentId.HasValue) return;
+        if (slot.State == "uploading") return;
+
+        var file = e.File;
+        if (file is null) return;
+
+        if (file.Size <= 0)
+        {
+            _error = "The selected file is empty.";
+            return;
+        }
+
+        if (file.Size > 50_000_000)
+        {
+            _error = "File must be 50 MB or smaller.";
+            return;
+        }
+
+        var fileName = file.Name;
+        var contentType = NormalizeContentType(file.ContentType, fileName);
+        MemoryStream? buffer = null;
+
+        try
+        {
+            // Copy the browser file fully before any UI state change. ComponentBase
+            // calls StateHasChanged on the first await of an event handler; reading
+            // after that re-render is what throws _blazorFilesById.
+            buffer = new MemoryStream(file.Size > int.MaxValue ? 0 : (int)file.Size);
+            await using var browser = file.OpenReadStream(maxAllowedSize: 50_000_000);
+            await browser.CopyToAsync(buffer);
+            buffer.Position = 0;
+        }
+        catch (Exception ex)
+        {
+            if (buffer is not null)
+                await buffer.DisposeAsync();
+            _error = FormatUploadError(ex);
+            return;
+        }
+
+        _error = null;
+        slot.FileName = fileName;
+        slot.State = "uploading";
+        slot.Progress = 35;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var progress = new Progress<int>(p =>
+            {
+                slot.Progress = 35 + (int)(p * 0.65);
+                _ = InvokeAsync(StateHasChanged);
+            });
+
+            if (slot.IsPrimary)
+            {
+                await Api.UploadPrimaryFileAsync(
+                    Wizard.DocumentId.Value, buffer, fileName, contentType, progress);
+            }
+            else
+            {
+                await Api.UploadAttachmentAsync(
+                    Wizard.DocumentId.Value,
+                    slot.Requirement.RequirementKey,
+                    buffer, fileName, contentType, progress);
+            }
+
+            slot.Progress = 100;
+            slot.State = "done";
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            slot.State = "empty";
+            slot.FileName = null;
+            slot.Progress = 0;
+            _error = FormatUploadError(ex);
+        }
+        finally
+        {
+            await buffer.DisposeAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static string FormatUploadError(Exception ex)
+    {
+        var msg = ex.Message ?? string.Empty;
+        if (msg.Contains("_blazorFilesById", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("readFileData", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Could not read the selected file. Please choose it again.";
+        }
+
+        var cut = msg.IndexOfAny(['\r', '\n']);
+        return cut > 0 ? msg[..cut].Trim() : msg.Trim();
+    }
+
+    private async Task ContinueAsync()
+    {
+        if (_busy || !Wizard.HasDraft) return;
+
+        _busy = true;
+        _error = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            if (_slots.Any(s => s.State == "uploading"))
+            {
+                _error = "Wait until the primary file shows Uploaded, then continue.";
+                return;
+            }
+
+            await HydrateFromServerAsync();
+
+            if (!CanContinue)
+            {
+                _error = "Upload the primary Activity Proposal PDF first.";
+                return;
+            }
+
+            Nav.NavigateTo("officer/submit/ocr");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string NormalizeContentType(string? contentType, string fileName)
+    {
+        var ct = (contentType ?? string.Empty).Trim().ToLowerInvariant();
+        if (ct is "application/pdf" or "image/png" or "image/jpeg" or "image/tiff")
+            return ct;
+        if (ct is "image/jpg") return "image/jpeg";
+        if (ct is "image/tif") return "image/tiff";
+
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".tif" or ".tiff" => "image/tiff",
+            _ => string.IsNullOrWhiteSpace(ct) ? "application/pdf" : ct,
+        };
+    }
+
+    private sealed class UploadSlot
+    {
+        public required RequirementDto Requirement { get; init; }
+        public bool IsPrimary { get; init; }
+        public string State { get; set; } = "empty";
+        public string? FileName { get; set; }
+        public int Progress { get; set; }
+    }
+}

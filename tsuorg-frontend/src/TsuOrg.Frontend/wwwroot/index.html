@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TSU-ORGDOCX</title>
+    <base href="/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="css/app.css?v=logo-home-nav" />
+    <link rel="stylesheet" href="css/responsive.css?v=mobile-tablet-1" />
+    <script type="importmap"></script>
+</head>
+<body>
+    <div id="app">
+        <div style="min-height:100vh;display:grid;place-items:center;background:#0b1220;color:#94a3b8;font-family:system-ui,sans-serif;padding:2rem;text-align:center;">
+            <div>
+                <p style="margin:0 0 0.5rem;font-size:1.1rem;">Loading TSU-ORGDOCX…</p>
+                <p style="margin:0;font-size:0.85rem;opacity:0.7;">If this stays forever, hard-refresh (Ctrl+F5) or check the browser console (F12).</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui" style="display:none;position:fixed;bottom:0;left:0;right:0;padding:1rem;background:#7f1d1d;color:#fff;z-index:9999;text-align:center;">
+        An error occurred while loading the app.
+        <a href="" style="color:#fde68a;margin-left:0.5rem;">Reload</a>
+    </div>
+
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script>
+        // Figure 27 report exports — save an authorized API response as a file.
+        window.tsuDownloadFile = (fileName, contentType, base64) => {
+            const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+            const url = URL.createObjectURL(new Blob([bytes], { type: contentType }));
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = fileName;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+    </script>
+</body>
+</html>

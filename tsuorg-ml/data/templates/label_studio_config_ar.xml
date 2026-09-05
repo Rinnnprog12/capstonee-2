@@ -1,0 +1,46 @@
+<!--
+  Label Studio config — Accomplishment Report / SF-06 (TSU-SOU-SF-06).
+  Paste into: Settings -> Labeling Interface -> Code
+
+  Page types (same label set; draw only fields present on the page):
+    • Cover      — LOGO_HEADER, ORG_NAME, REPORT_TITLE, SEMESTER, ACADEMIC_YEAR
+    • Summary    — LOGO_HEADER, SUMMARY_TITLE, ACTIVITY_NO, ACTIVITY_NAME,
+                   ACTIVITY_DATE, VENUE, INVOLVEMENT, EXTENT_OF_BENEFITS, LEVEL,
+                   SECRETARY_SIGNATURE, PRESIDENT_SIGNATURE, ADVISER_SIGNATURE
+    • Activity   — LOGO_HEADER, ACTIVITY_NO, ACTIVITY_NAME, ACTIVITY_DATE, VENUE,
+                   INVOLVEMENT, LEVEL, EXTENT_OF_BENEFITS, NARRATIVE
+-->
+<View>
+  <Header value="Document type"/>
+  <Choices name="doc_type" toName="image" choice="single" required="true">
+    <Choice value="ACCOMPLISHMENT"/>
+  </Choices>
+
+  <Header value="Page image"/>
+  <Image name="image" value="$image" zoom="true" zoomControl="true"/>
+
+  <Header value="Click a label, draw a box, then type the text inside"/>
+  <Labels name="label" toName="image">
+    <Label value="LOGO_HEADER" background="#f59e0b"/>
+    <Label value="ORG_NAME" background="#3b82f6"/>
+    <Label value="REPORT_TITLE" background="#ec4899"/>
+    <Label value="SEMESTER" background="#84cc16"/>
+    <Label value="ACADEMIC_YEAR" background="#f97316"/>
+    <Label value="SUMMARY_TITLE" background="#06b6d4"/>
+    <Label value="ACTIVITY_NO" background="#a855f7"/>
+    <Label value="ACTIVITY_NAME" background="#f59e0b"/>
+    <Label value="ACTIVITY_DATE" background="#38bdf8"/>
+    <Label value="VENUE" background="#6366f1"/>
+    <Label value="INVOLVEMENT" background="#16a34a"/>
+    <Label value="LEVEL" background="#db2777"/>
+    <Label value="EXTENT_OF_BENEFITS" background="#ca8a04"/>
+    <Label value="NARRATIVE" background="#ea580c"/>
+    <Label value="SECRETARY_SIGNATURE" background="#94a3b8"/>
+    <Label value="PRESIDENT_SIGNATURE" background="#64748b"/>
+    <Label value="ADVISER_SIGNATURE" background="#475569"/>
+  </Labels>
+
+  <TextArea name="transcription" toName="image" perRegion="true"
+            placeholder="Type the text visible in the selected region..."
+            editable="true" required="false"/>
+</View>

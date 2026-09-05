@@ -1,0 +1,429 @@
+@page "/officer/submit/validation"
+@layout PortalLayout
+@attribute [Authorize(Roles = "OrgOfficer")]
+@inject NavigationManager Nav
+@inject ApiClient Api
+@inject SubmissionWizardState Wizard
+@using System.Text.Json
+@implements IDisposable
+
+<PageTitle>New Submission · Validation</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="officer/submit/ocr">← Back</a>
+    <h1>New Document Submission</h1>
+</div>
+
+<SubmissionStepper Current="4" />
+
+<div class="wizard-card fig9-val">
+    <h2>AI Validation &amp; Compliance</h2>
+    <p class="hint">CALSV Engine — running multi-point checks against university rules and standards.</p>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="form-error" role="alert">@_error</p>
+    }
+
+    @if (!Wizard.HasDraft)
+    {
+        <p class="hint">No draft submission found.</p>
+        <a class="btn btn-primary" href="officer/submit">Start over</a>
+    }
+    else if (_loading)
+    {
+        <p class="hint">@_statusMessage</p>
+    }
+    else
+    {
+        <div class="val-grid">
+            <div class="subcard scroll-panel">
+                <h4>Validation Report</h4>
+
+                @if (_validation is null)
+                {
+                    <p class="empty-state" style="text-align:left;padding:0.75rem 0;">
+                        No validation results yet. Complete the OCR step first, or Refresh.
+                    </p>
+                }
+                else
+                {
+                    <p class="val-class-line">
+                        <strong>@_validation.DocumentClass</strong>
+                        <span class="val-muted">· CALSV @_validation.Confidence.ToString("P0")</span>
+                    </p>
+
+                    @foreach (var group in _groups)
+                    {
+                        <div class="val-group">
+                            <div class="val-group-title">@group.Title</div>
+                            @foreach (var row in group.Rows)
+                            {
+                                <div class="val-check-row">
+                                    <div class="val-check-label">
+                                        <span class="val-check-name">@row.Name</span>
+                                        @if (!string.IsNullOrWhiteSpace(row.Detail))
+                                        {
+                                            <span class="val-check-detail">@row.Detail</span>
+                                        }
+                                    </div>
+                                    <span class="@(row.Passed ? "tag-pass" : "tag-flag")">@(row.Passed ? "PASSED" : "FLAG")</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="subcard">
+                <h4>Validation Insights (Flags)</h4>
+                @if (_insights.Count == 0)
+                {
+                    <p class="empty-state" style="text-align:left;padding:0.75rem 0;">
+                        No flags — all automated checks passed.
+                    </p>
+                }
+                else
+                {
+                    @foreach (var insight in _insights)
+                    {
+                        <div class="flag-item">
+                            <span class="flag-dot" aria-hidden="true"></span>
+                            <div>
+                                <div class="val-insight-title">@insight.Title</div>
+                                <div class="val-insight-body">@insight.Body</div>
+                            </div>
+                        </div>
+                    }
+                    <p class="val-insight-note">Flags are minor and for verification. Submit or revise.</p>
+                }
+            </div>
+        </div>
+
+        <p class="val-status-line">@_statusMessage</p>
+
+        <div class="wizard-actions">
+            <button type="button" class="btn btn-primary" disabled="@(!_canContinue)" @onclick="Continue">Continue →</button>
+            <a class="btn btn-ghost" href="officer/submit/ocr">Cancel</a>
+            <button type="button" class="btn btn-ghost" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private bool _canContinue;
+    private string? _error;
+    private string _statusMessage = "Loading CALSV validation results…";
+    private ValidationDetailDto? _validation;
+    private readonly List<ReportGroup> _groups = [];
+    private readonly List<Insight> _insights = [];
+    private CancellationTokenSource? _cts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Wizard.HasDraft)
+        {
+            _loading = false;
+            return;
+        }
+
+        _cts = new CancellationTokenSource();
+        await LoadAsync(_cts.Token);
+    }
+
+    private async Task LoadAsync(CancellationToken ct)
+    {
+        _busy = true;
+        _loading = true;
+        _error = null;
+        _canContinue = false;
+        try
+        {
+            _statusMessage = "Waiting for CALSV Engine results…";
+
+            // Poll briefly — OCR step usually already finished validation
+            for (var i = 0; i < 20 && !ct.IsCancellationRequested; i++)
+            {
+                _validation = await Api.GetValidationAsync(Wizard.DocumentId!.Value, ct);
+                if (_validation is not null) break;
+                await Task.Delay(1200, ct);
+                StateHasChanged();
+            }
+
+            if (_validation is null)
+            {
+                _statusMessage = "Validation not ready yet. Go back to OCR or Refresh.";
+                _canContinue = false;
+                return;
+            }
+
+            BuildReport(_validation);
+            _canContinue = true; // soft gate — minor flags may proceed (Figure 9)
+            _statusMessage = _insights.Count == 0
+                ? "Validation complete. All documents checked."
+                : "Validation complete. All documents checked. Submissions with minor flags may proceed.";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _statusMessage = "Could not load validation results.";
+        }
+        finally
+        {
+            _loading = false;
+            _busy = false;
+        }
+    }
+
+    private void BuildReport(ValidationDetailDto v)
+    {
+        _groups.Clear();
+        _insights.Clear();
+
+        var formRows = new List<CheckRow>();
+        var signatureRows = new List<CheckRow>();
+        var attachmentRows = new List<CheckRow>();
+
+        var presentCount = 0;
+        var mandatoryChecked = 0;
+        var layoutFlag = false;
+
+        if (v.Fields.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var el in v.Fields.EnumerateArray())
+            {
+                var name = el.TryGetProperty("name", out var n) ? n.GetString() ?? "?" : "?";
+                var label = el.TryGetProperty("label", out var l) ? l.GetString() ?? "?" : "?";
+                var matched = el.TryGetProperty("matched_text", out var mt) ? mt.GetString() : null;
+                double? conf = null;
+                if (el.TryGetProperty("ocr_confidence", out var c) && c.TryGetDouble(out var cd))
+                    conf = cd;
+
+                var catalogNote = CatalogNote(el);
+                if (!string.IsNullOrWhiteSpace(catalogNote)
+                    && !name.Equals("OrganizationName", StringComparison.OrdinalIgnoreCase)
+                    && !name.Equals("College", StringComparison.OrdinalIgnoreCase)
+                    && (matched is null || !matched.Contains(catalogNote, StringComparison.OrdinalIgnoreCase)))
+                    matched = string.IsNullOrWhiteSpace(matched) ? catalogNote : $"{matched} · {catalogNote}";
+
+                var passed = label is "PRESENT" or "SIGNED" or "CONDITIONALLY_REQUIRED";
+                var isSig = name.Contains("Signature", StringComparison.OrdinalIgnoreCase)
+                            || label is "SIGNED" or "UNSIGNED";
+
+                if (label is not "CONDITIONALLY_REQUIRED")
+                {
+                    mandatoryChecked++;
+                    if (passed) presentCount++;
+                }
+
+                var display = Humanize(name);
+                var detail = BuildFieldDetail(label, matched, conf);
+                var row = new CheckRow(display, detail, passed);
+
+                if (isSig) signatureRows.Add(row);
+                else formRows.Add(row);
+
+                if (!passed)
+                {
+                    _insights.Add(new Insight(
+                        InsightTitle(label, isSig),
+                        InsightBody(display, label, matched, conf)));
+                }
+                else if (conf is < 70)
+                {
+                    layoutFlag = true;
+                    _insights.Add(new Insight(
+                        "Low Confidence Field",
+                        $"{display} extracted — please verify spatial context ({conf:0}%)."));
+                }
+            }
+        }
+
+        // Synthetic completeness + layout rows (Figure 9)
+        var completenessOk = mandatoryChecked == 0 || presentCount >= Math.Max(1, (int)(mandatoryChecked * 0.7));
+        formRows.Insert(0, new CheckRow(
+            "Field Completeness",
+            completenessOk ? "All required fields checked" : $"{presentCount}/{mandatoryChecked} required present",
+            completenessOk));
+
+        var layoutScore = (int)Math.Round((double)v.Confidence * 100);
+        if (layoutScore > 100) layoutScore = (int)Math.Clamp((double)v.Confidence, 0, 100);
+        // Confidence from CALSV is typically 0–1
+        if (v.Confidence <= 1m)
+            layoutScore = (int)Math.Round((double)v.Confidence * 100);
+
+        var layoutOk = layoutScore >= 70 && !layoutFlag;
+        formRows.Insert(1, new CheckRow(
+            "Layout & Formatting",
+            $"CALSV Score {layoutScore}%",
+            layoutOk));
+
+        if (!layoutOk)
+        {
+            _insights.Add(new Insight(
+                "Formatted Layout",
+                layoutFlag
+                    ? "Layout slightly deviates from standard form — low-confidence tokens detected."
+                    : $"Layout / semantic score {layoutScore}% — please verify against the SOU template."));
+        }
+
+        if (!completenessOk)
+        {
+            _insights.Add(new Insight(
+                "Field Completeness",
+                "One or more required fields were missing or illegible in the OCR pass."));
+        }
+
+        // Attachments
+        if (v.Attachments is JsonElement atts && atts.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var el in atts.EnumerateArray())
+            {
+                var type = el.TryGetProperty("type", out var t) ? t.GetString() ?? "?" : "?";
+                var label = el.TryGetProperty("label", out var l) ? l.GetString() ?? "?" : "?";
+                var passed = label is "ATTACHMENT_PRESENT" or "CONDITIONALLY_REQUIRED";
+                var title = Wizard.AttachmentRequirements
+                    .FirstOrDefault(r => string.Equals(r.RequirementKey, type, StringComparison.OrdinalIgnoreCase))
+                    ?.DisplayName ?? Humanize(type);
+
+                attachmentRows.Add(new CheckRow(
+                    title,
+                    passed ? "Attachment verified" : "Attachment missing",
+                    passed));
+
+                if (!passed)
+                {
+                    _insights.Add(new Insight(
+                        "Attachment Missing",
+                        $"{title} was not found in the submitted package."));
+                }
+            }
+        }
+
+        // Consistency issues from Layer 3
+        if (v.ConsistencyIssues is JsonElement issues && issues.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var el in issues.EnumerateArray())
+            {
+                var code = el.TryGetProperty("code", out var c) ? c.GetString() ?? "Consistency" : "Consistency";
+                var desc = el.TryGetProperty("description", out var d) ? d.GetString() : null;
+                if (string.IsNullOrWhiteSpace(desc)) continue;
+                _insights.Add(new Insight(Humanize(code), desc));
+                // Reflect on form group as FLAG row when not already covered
+                formRows.Add(new CheckRow(Humanize(code), "Consistency check", false));
+            }
+        }
+
+        // OCR low-confidence flags
+        if (v.LowConfidenceFlags is { Count: > 0 })
+        {
+            var sample = string.Join(", ", v.LowConfidenceFlags.Take(3).Select(f => f.Token));
+            if (!_insights.Any(i => i.Title.Contains("Low Confidence", StringComparison.OrdinalIgnoreCase)))
+            {
+                _insights.Add(new Insight(
+                    "Low Confidence Field",
+                    $"OCR flagged tokens ({sample}) — please verify spatial context."));
+            }
+        }
+
+        if (v.RequiresHumanReview)
+        {
+            _insights.Add(new Insight(
+                "Human Review Recommended",
+                "CALSV marked this package for staff verification before final approval routing."));
+        }
+
+        var formTitle = string.IsNullOrWhiteSpace(Wizard.DocumentTypeName)
+            ? "Primary Form"
+            : Wizard.DocumentTypeName;
+
+        if (formRows.Count > 0)
+            _groups.Add(new ReportGroup(formTitle, formRows));
+        if (signatureRows.Count > 0)
+            _groups.Add(new ReportGroup("Signatures", signatureRows));
+        if (attachmentRows.Count > 0)
+            _groups.Add(new ReportGroup("Attachments / Supporting Docs", attachmentRows));
+    }
+
+    private static string? CatalogNote(JsonElement el)
+    {
+        var bits = new List<string>();
+        if (el.TryGetProperty("catalog_acronym", out var acr) && acr.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(acr.GetString()))
+            bits.Add(acr.GetString()!);
+        if (el.TryGetProperty("college_name", out var cn) && cn.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(cn.GetString()))
+            bits.Add(cn.GetString()!);
+        else if (el.TryGetProperty("college_code", out var cc) && cc.ValueKind == JsonValueKind.String
+                 && !string.IsNullOrWhiteSpace(cc.GetString()))
+            bits.Add(cc.GetString()!);
+        return bits.Count == 0 ? null : string.Join(" · ", bits);
+    }
+
+    private static string BuildFieldDetail(string label, string? matched, double? conf)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(matched))
+            parts.Add(matched!);
+        else
+            parts.Add(PrettyLabel(label));
+        if (conf is not null)
+            parts.Add($"{conf:0}% OCR");
+        return string.Join(" · ", parts);
+    }
+
+    private static string PrettyLabel(string label) => label switch
+    {
+        "PRESENT" => "Detected",
+        "MISSING" => "Missing",
+        "ILLEGIBLE" => "Illegible / low confidence",
+        "SIGNED" => "Signature detected",
+        "UNSIGNED" => "Signature not detected",
+        "CONDITIONALLY_REQUIRED" => "Conditional",
+        _ => label,
+    };
+
+    private static string InsightTitle(string label, bool isSig) => label switch
+    {
+        "MISSING" => "Missing Field",
+        "ILLEGIBLE" => "Low Confidence Field",
+        "UNSIGNED" => isSig ? "Signature Not Detected" : "Unsigned Field",
+        _ => "Validation Flag",
+    };
+
+    private static string InsightBody(string display, string label, string? matched, double? conf)
+    {
+        return label switch
+        {
+            "MISSING" => $"{display} was not found in the extracted form layout.",
+            "ILLEGIBLE" => $"{display} extracted with low confidence{(conf is null ? "" : $" ({conf:0}%)")} — please verify spatial context.",
+            "UNSIGNED" => $"{display}: no signature ink/region detected in spatial context.",
+            _ => string.IsNullOrWhiteSpace(matched)
+                ? $"{display}: {PrettyLabel(label)}."
+                : $"{display}: {matched} ({PrettyLabel(label)}).",
+        };
+    }
+
+    private static string Humanize(string name) =>
+        System.Text.RegularExpressions.Regex.Replace(name, "([a-z])([A-Z])", "$1 $2")
+            .Replace('_', ' ');
+
+    private async Task RefreshAsync()
+    {
+        if (!Wizard.HasDraft || _busy) return;
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        await LoadAsync(_cts.Token);
+    }
+
+    private void Continue() => Nav.NavigateTo("officer/submit/confirm");
+
+    public void Dispose() => _cts?.Cancel();
+
+    private sealed record ReportGroup(string Title, List<CheckRow> Rows);
+    private sealed record CheckRow(string Name, string Detail, bool Passed);
+    private sealed record Insight(string Title, string Body);
+}

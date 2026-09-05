@@ -1,0 +1,145 @@
+@page "/sou/settings"
+@layout PortalLayout
+@attribute [Authorize(Roles = "SouStaff,SystemAdmin")]
+@inject ApiClient Api
+
+<PageTitle>System Settings</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="sou">← Back</a>
+    <h1>System settings</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+@if (!string.IsNullOrEmpty(_saved))
+{
+    <p class="form-success" role="status">@_saved</p>
+}
+
+@if (_loading)
+{
+    <p class="hint">Loading settings…</p>
+}
+else
+{
+    <h5 class="settings-group-title">Document Validation</h5>
+    <section class="panel settings-panel">
+        <label class="setting-row">
+            <span>AI validation engine</span>
+            <input type="checkbox" class="toggle" @bind="_aiValidation" />
+        </label>
+        <label class="setting-row">
+            <span>OCR auto-processing</span>
+            <input type="checkbox" class="toggle" @bind="_ocrAuto" />
+        </label>
+    </section>
+
+    <h5 class="settings-group-title">Notifications</h5>
+    <section class="panel settings-panel">
+        <label class="setting-row">
+            <span>Email notifications to officers</span>
+            <input type="checkbox" class="toggle" @bind="_emailNotify" />
+        </label>
+        <label class="setting-row">
+            <span>Stale document alerts (&gt;5 days)</span>
+            <input type="checkbox" class="toggle" @bind="_staleAlerts" />
+        </label>
+        <label class="setting-row">
+            <span>Low compliance score warnings</span>
+            <input type="checkbox" class="toggle" @bind="_lowCompliance" />
+        </label>
+    </section>
+
+    <h5 class="settings-group-title">Compliance Thresholds</h5>
+    <section class="panel settings-panel">
+        <div class="form-field">
+            <label for="min-score">Minimum compliance score to pass validation (%)</label>
+            <input id="min-score" class="input" type="number" min="0" max="100" style="max-width:140px;" @bind="_minScore" />
+        </div>
+        <div class="form-field">
+            <label for="review-types">Document types requiring mandatory adviser review</label>
+            <select id="review-types" class="select" @bind="_reviewTypes">
+                <option value="All">All document types</option>
+                <option value="FinancialOnly">Financial Reports only</option>
+                <option value="None">None</option>
+            </select>
+        </div>
+        <button type="button" class="btn btn-primary" disabled="@_saving" @onclick="SaveAsync">
+            @(_saving ? "Saving…" : "Save settings")
+        </button>
+    </section>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _saving;
+    private string? _error;
+    private string? _saved;
+
+    private bool _aiValidation = true;
+    private bool _ocrAuto = true;
+    private bool _emailNotify = true;
+    private bool _staleAlerts = true;
+    private bool _lowCompliance = true;
+    private int _minScore = 75;
+    private string _reviewTypes = "All";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var s = await Api.GetSystemSettingsAsync();
+            if (s is not null) Apply(s);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+        _saved = null;
+        try
+        {
+            var updated = await Api.UpdateSystemSettingsAsync(new SystemSettingsDto(
+                _aiValidation,
+                _ocrAuto,
+                _emailNotify,
+                _staleAlerts,
+                _lowCompliance,
+                _minScore,
+                _reviewTypes));
+            if (updated is not null) Apply(updated);
+            _saved = "Settings saved.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Apply(SystemSettingsDto s)
+    {
+        _aiValidation = s.AiValidationEnabled;
+        _ocrAuto = s.OcrAutoProcessing;
+        _emailNotify = s.EmailNotifications;
+        _staleAlerts = s.StaleDocumentAlerts;
+        _lowCompliance = s.LowComplianceWarnings;
+        _minScore = s.MinComplianceScore;
+        _reviewTypes = s.MandatoryAdviserReviewTypes;
+    }
+}

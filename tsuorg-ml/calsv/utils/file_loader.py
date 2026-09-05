@@ -47,10 +47,18 @@ def load_file_bytes(raw: bytes, target_dpi: int = 300) -> LoadedFile:
 
 
 def _download(url: str) -> bytes:
-    with httpx.Client(timeout=60.0, follow_redirects=True) as client:
-        resp = client.get(url)
-        resp.raise_for_status()
-        return resp.content
+    try:
+        with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+            return resp.content
+    except httpx.HTTPError as exc:
+        if ":10000" in url:
+            raise RuntimeError(
+                "Could not download the form (Azurite/blob emulator is not running). "
+                "Restart TsuOrg.Api (local disk storage) and re-upload the PDF."
+            ) from exc
+        raise
 
 
 def _detect_mime(data: bytes) -> str:

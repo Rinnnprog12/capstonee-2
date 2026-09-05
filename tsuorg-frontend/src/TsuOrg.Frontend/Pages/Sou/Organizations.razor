@@ -1,0 +1,161 @@
+@page "/sou/organizations"
+@layout PortalLayout
+@attribute [Authorize(Roles = "SouStaff,SystemAdmin")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Student Organizations</PageTitle>
+
+<div class="page-head">
+    <a class="back-btn" href="sou">← Back</a>
+    <h1>Student Organizations</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <p class="form-error" role="alert">@_error</p>
+}
+
+<div class="tabs" role="tablist" aria-label="Organization status">
+    <button type="button" role="tab" aria-selected="@(_tab == "Active")"
+            class="tab @(_tab == "Active" ? "active" : null)"
+            @onclick='() => SwitchTabAsync("Active")'>
+        All active (@_activeCount)
+    </button>
+    <button type="button" role="tab" aria-selected="@(_tab == "Inactive")"
+            class="tab @(_tab == "Inactive" ? "active" : null)"
+            @onclick='() => SwitchTabAsync("Inactive")'>
+        Inactive (@_inactiveCount)
+    </button>
+</div>
+
+@if (_loading)
+{
+    <p class="hint">Loading organizations…</p>
+}
+else if (_items.Count == 0)
+{
+    <section class="panel">
+        <p class="empty-state">No organizations in this view.</p>
+    </section>
+}
+else
+{
+    <div class="org-cards">
+        @foreach (var (org, i) in _items.Select((o, i) => (o, i)))
+        {
+            <button type="button" class="panel org-card org-card-btn" @onclick="() => OpenOrg(org.Id)">
+                <div class="org-card-head">
+                    <div class="org-avatar @AvatarColor(i)">@OrgInitials(org)</div>
+                    <div class="org-card-identity">
+                        <div class="title">@DisplayName(org)</div>
+                        <div class="meta">
+                            @(org.AdviserName ?? "No adviser assigned")
+                            @if (!string.IsNullOrWhiteSpace(org.PresidentName))
+                            {
+                                <span> · @org.PresidentName</span>
+                            }
+                        </div>
+                    </div>
+                    <span class="badge @HealthBadge(org.HealthStatus)">@org.HealthStatus</span>
+                </div>
+                <div class="org-card-stats">
+                    <div class="org-stat">
+                        <div class="value teal">@org.Submissions</div>
+                        <div class="label">Submissions</div>
+                    </div>
+                    <div class="org-stat">
+                        <div class="value green-text">@org.Approved</div>
+                        <div class="label">Approved</div>
+                    </div>
+                    <div class="org-stat">
+                        <div class="value @(org.Returned > 0 ? "danger-text" : null)">@org.Returned</div>
+                        <div class="label">Returned</div>
+                    </div>
+                    <div class="org-stat">
+                        <div class="value @ComplianceTone(org.CompliancePercent)-text">@org.CompliancePercent%</div>
+                        <div class="label">Compliance</div>
+                    </div>
+                </div>
+            </button>
+        }
+    </div>
+}
+
+@code {
+    private string _tab = "Active";
+    private bool _loading = true;
+    private string? _error;
+    private int _activeCount;
+    private int _inactiveCount;
+    private readonly List<OrganizationAdminDto> _items = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task SwitchTabAsync(string tab)
+    {
+        if (_tab == tab && !_loading) return;
+        _tab = tab;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var result = await Api.GetOrganizationsAdminAsync(_tab);
+            _items.Clear();
+            _items.AddRange(result.Items);
+            _activeCount = result.ActiveCount;
+            _inactiveCount = result.InactiveCount;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenOrg(Guid orgId) => Nav.NavigateTo($"/sou/tracker?org={orgId}");
+
+    private static string DisplayName(OrganizationAdminDto org) =>
+        string.IsNullOrWhiteSpace(org.College) || org.Name.StartsWith(org.College, StringComparison.OrdinalIgnoreCase)
+            ? org.Name
+            : $"{org.College} {org.Name}";
+
+    private static string HealthBadge(string health) => health switch
+    {
+        "Active" => "badge-approved",
+        "Flagged" => "badge-org-flagged",
+        _ => "badge-inactive",
+    };
+
+    private static string OrgInitials(OrganizationAdminDto org)
+    {
+        if (!string.IsNullOrWhiteSpace(org.Acronym))
+            return org.Acronym[..Math.Min(2, org.Acronym.Length)].ToUpperInvariant();
+
+        var parts = org.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+            _ => $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}",
+        };
+    }
+
+    private static string AvatarColor(int index) =>
+        new[] { "red", "blue", "green", "purple", "amber" }[index % 5];
+
+    private static string ComplianceTone(int pct) => pct switch
+    {
+        >= 80 => "green",
+        >= 60 => "amber",
+        _ => "danger",
+    };
+}

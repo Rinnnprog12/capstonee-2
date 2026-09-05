@@ -1,0 +1,38 @@
+# Blazor WASM / .NET
+bin/
+obj/
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+publish/
+out/
+*.user
+*.suo
+*.cache
+*.dll
+*.pdb
+*.log
+
+# Visual Studio / Rider
+.vs/
+*.rsuser
+*.DotSettings.user
+
+# Local settings
+appsettings.Development.json
+wwwroot/appsettings.Development.json
+
+# Static publish output
+wwwroot/_framework/
+# (generated on build; keep source wwwroot assets tracked)
+
+# Test / coverage
+TestResults/
+coverage/
+
+# npm (if added later)
+node_modules/
+dist/
+.parcel-cache/
+.vite/
